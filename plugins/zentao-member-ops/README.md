@@ -188,7 +188,3 @@ python3 -m py_compile mcp/server.py mcp/zentao_client.py scripts/configure.py sc
 ```
 
 版本记录见 [CHANGELOG.md](CHANGELOG.md)。
-
-## 许可
-
-MIT — 详见 [LICENSE](LICENSE)。该许可允许其他人安装、使用、审查和改进插件；它不是禅道认证许可，也不会授予任何禅道账号权限。
