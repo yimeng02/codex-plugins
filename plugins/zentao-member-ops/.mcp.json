@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "zentao-member-ops": {
+      "cwd": ".",
+      "command": "python3",
+      "args": [
+        "./mcp/server.py"
+      ],
+      "env": {
+        "ZENTAO_PROFILE": "production"
+      },
+      "default_tools_approval_mode": "writes"
+    }
+  }
+}

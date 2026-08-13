@@ -1,0 +1,36 @@
+{
+  "name": "zentao-member-ops",
+  "version": "1.0.0",
+  "description": "Dynamic member-aware ZenTao 21.7.1 access with cache-coherent reads, Codex-led issue processing, and risk-gated writes.",
+  "author": {
+    "name": "yimeng02",
+    "url": "https://github.com/yimeng02"
+  },
+  "homepage": "https://github.com/yimeng02/zentao-member-ops",
+  "repository": "https://github.com/yimeng02/zentao-member-ops",
+  "license": "MIT",
+  "keywords": ["zentao", "mcp", "codex", "bug", "project-management"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "\u7985\u9053\u6210\u5458\u64cd\u4f5c",
+    "shortDescription": "\u6309\u767b\u5f55\u6210\u5458\u5206\u7ec4\u6743\u9650\u67e5\u770b\u548c\u64cd\u4f5c\u7985\u9053\u4e8b\u9879",
+    "longDescription": "\u8fde\u63a5\u7985\u9053\u5f00\u6e90\u7248 21.7.1\uff0c\u6309\u5f53\u524d\u8d26\u53f7\u6240\u5c5e\u5206\u7ec4\u7684\u5b9e\u9645\u6743\u9650\u52a8\u6001\u751f\u6210\u9879\u76ee\u3001Bug\u3001\u9700\u6c42\u548c\u4efb\u52a1\u5de5\u5177\uff1b\u63d2\u4ef6\u8d1f\u8d23\u83b7\u53d6 Bug/\u9700\u6c42\u4fe1\u606f\uff0c\u7531\u5f53\u524d Codex \u8d1f\u8d23\u5206\u6790\u3001\u65b9\u6848\u3001\u5904\u7406\u548c\u9a8c\u8bc1\uff1b\u5199\u5165\u540e\u81ea\u52a8\u5931\u6548\u7f13\u5b58\u5e76\u5f3a\u5236\u56de\u8bfb\uff1b\u9ed8\u8ba4\u6240\u6709\u5199\u5165\u7531\u672c\u4eba\u786e\u8ba4\uff0c\u53ef\u914d\u7f6e\u4ec5\u4f4e\u98ce\u9669\u8bc4\u8bba\u81ea\u52a8\u786e\u8ba4\u3002",
+    "developerName": "yimeng02",
+    "category": "Productivity",
+    "capabilities": [
+      "ZenTao project, Bug, story, and task reads",
+      "Account-group-derived dynamic MCP toolsets",
+      "Permission-aware product, project, and execution creation",
+      "New Bug detection, attachment context, and source-backed analysis delivered in Codex",
+      "Codex-led Bug and requirement analysis, implementation, and verification",
+      "Cache invalidation plus authoritative refresh after successful writes",
+      "Manual or low-risk-only automatic confirmation with risky writes always human-confirmed"
+    ],
+    "defaultPrompt": [
+      "\u68c0\u67e5\u5f53\u524d\u7985\u9053\u8d26\u53f7\u3001\u5206\u7ec4\u6743\u9650\u548c\u53ef\u89c1\u9879\u76ee\u3002",
+      "\u68c0\u6d4b\u65b0\u589e Bug\uff0c\u7ed3\u5408\u5bf9\u5e94\u6e90\u7801\u5728 Codex \u4e2d\u7ed9\u51fa\u5206\u6790\u548c\u9a8c\u8bc1\u65b9\u6848\u3002",
+      "\u9884\u89c8\u6211\u6307\u5b9a\u7684\u7985\u9053\u5199\u5165\u64cd\u4f5c\uff0c\u5e76\u7b49\u5f85\u6211\u786e\u8ba4\u3002"
+    ]
+  },
+  "mcpServers": "./.mcp.json"
+}

@@ -1,0 +1,14 @@
+interface:
+  display_name: "禅道成员操作"
+  short_description: "按账号分组获取禅道信息并安全执行经批准的项目操作管理"
+  default_prompt: "使用 $zentao-member-ops 获取禅道 Bug 和需求信息，交给当前 Codex 分析处理并验证，默认所有写入等待我的确认。"
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "zentao-member-ops"
+      description: "按禅道成员分组实时生成项目、Bug、需求、任务和安全写入工具"
+      transport: "stdio"
+
+policy:
+  allow_implicit_invocation: true

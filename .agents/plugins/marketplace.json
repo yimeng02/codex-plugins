@@ -1,0 +1,20 @@
+{
+  "name": "yimeng02",
+  "interface": {
+    "displayName": "Yimeng02"
+  },
+  "plugins": [
+    {
+      "name": "zentao-member-ops",
+      "source": {
+        "source": "local",
+        "path": "./plugins/zentao-member-ops"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
