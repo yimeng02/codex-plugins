@@ -28,6 +28,12 @@ Bug and requirement processing has a stricter delivery boundary: the plugin retr
 
 Credentials live outside the plugin at `~/.config/codex/zentao-member-ops/credentials.json` with mode `0600`. They are never returned by tools, logged, embedded in the plugin, or placed in commands. Tokens remain in process memory.
 
+On first configuration, require the user to provide the ZenTao address, member account, member password, and explicit project allow list. Ask separately about an outer HTTP Basic layer and collect those credentials only when it exists. Never guess or silently inherit a missing value. Enter passwords through hidden prompts and show only redacted status/test output.
+
+## Post-write UI evidence
+
+After every successful ZenTao mutation, require an authenticated screenshot of the real rendered result page. Verify the visible object ID and changed result against the cache-bypassing authoritative read before showing the image. Exclude login, HTTP Basic, token, password-manager, and other credential UI. A screenshot failure does not undo or falsify a completed write, and it never authorizes repeating the mutation; retry only the UI verification.
+
 ## Network
 
 The current production ZenTao URL uses plain HTTP. This does not weaken the confirmation token but it means ZenTao passwords, session tokens, and business data are not encrypted in transit. Prefer HTTPS or a trusted private/VPN network before broader deployment.
@@ -41,3 +47,5 @@ Attachment IDs must first be proven to belong to the scoped Bug. Downloads are s
 Uploads accept only regular files under the connector-owned staging root or the mapped source root for the allowed project. A preview binds absolute path, byte size, and SHA-256 into the signed token. Any file change aborts before remote upload. The combined upload-and-create sequence is not transactionally atomic in ZenTao 21.7.1, so the exact preview discloses that a failed Bug creation can leave already-uploaded unattached files.
 
 Project source mappings live in the private profile next to credentials. They may name only allow-listed projects. A missing or ambiguous mapping must stop source-backed conclusions rather than silently selecting a different repository.
+
+Developer-default daily automation is provisioned only after a successful interactive identity check confirms both a developer role code and live Bug-read privilege. Deduplicate by the canonical automation key/name. The schedule may perform ZenTao reads and connector-private local writes only. Persist scan state and solution packages below the private profile runtime directory, scoped by endpoint, profile, account, and project. Never place these artifacts in plugin source, a project worktree, or Git.

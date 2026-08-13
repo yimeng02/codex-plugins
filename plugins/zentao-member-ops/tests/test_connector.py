@@ -10,8 +10,11 @@ from unittest.mock import patch
 
 
 MCP_ROOT = Path(__file__).resolve().parents[1] / "mcp"
+SCRIPTS_ROOT = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(MCP_ROOT))
+sys.path.insert(0, str(SCRIPTS_ROOT))
 
+from configure import build_parser, set_profile  # noqa: E402
 from policy import (  # noqa: E402
     BUG_ACTIONS,
     STORY_ACTIONS,
@@ -35,16 +38,37 @@ def group(
     *,
     group_id: int = 1,
     name: str = "研发",
+    role: str = "dev",
 ) -> dict:
     return {
         "id": group_id,
         "name": name,
-        "role": "dev",
+        "role": role,
         "accounts": {account: account},
         "privs": {
             module: {method: True for method in methods}
             for module, methods in privileges.items()
         },
+    }
+
+
+def complete_solution_analysis() -> dict:
+    return {
+        "symptom_summary": "Opening the camera crashes the application.",
+        "reproduction_conditions": "Use the affected build and open Camera once.",
+        "evidence": ["Bug steps contain the failing entry path.", "logcat is attached."],
+        "inspected_attachments": ["file 21: logcat"],
+        "source_findings": ["Camera startup is the candidate fault boundary."],
+        "root_cause": "The current evidence points to an unchecked camera startup failure.",
+        "confidence": "medium",
+        "impact_and_risks": ["Camera remains unavailable until the process restarts."],
+        "recommended_solution": "Handle startup failure and preserve a diagnostic error.",
+        "implementation_steps": ["Guard camera startup.", "Add a failure-path test."],
+        "candidate_files": ["camera/startup/CameraController.java"],
+        "verification_plan": ["Reproduce before the fix.", "Run camera startup regression."],
+        "open_questions": ["Confirm the exact device build fingerprint."],
+        "handoff_instructions": "Re-read the package evidence, confirm the source mapping, then ask before editing source.",
+        "analysis_status": "ready",
     }
 
 
@@ -62,6 +86,7 @@ class FakeClient:
         story_detail: dict | None = None,
         task_detail: dict | None = None,
         write_confirmation_mode: str = "manual",
+        account_role: str = "dev",
     ) -> None:
         self.account = account
         self.groups = groups
@@ -71,6 +96,7 @@ class FakeClient:
         self.products = products if products is not None else [{"id": 7, "name": "Local product"}]
         self.story_detail = story_detail
         self.task_detail = task_detail
+        self.account_role = account_role
         self.execution_detail = {"id": 2, "project": 101, "name": "Local sprint"}
         self.downloads: list[tuple[int, Path]] = []
         self.uploads: list[tuple[Path, str]] = []
@@ -98,7 +124,7 @@ class FakeClient:
                 "profile": {
                     "account": self.account,
                     "realname": self.account,
-                    "role": {"code": "dev", "name": "研发"},
+                    "role": {"code": self.account_role, "name": self.account_role},
                     "admin": False,
                 }
             }
@@ -202,11 +228,55 @@ class PolicyTests(unittest.TestCase):
 
 
 class DynamicToolTests(unittest.TestCase):
+    def test_connection_status_declares_required_first_configuration_inputs(self) -> None:
+        client = FakeClient("", [])
+        client.config.credentials_configured = False
+        tools = ZentaoMemberTools(client=client)
+        status = tools.connection_status({})
+
+        self.assertFalse(status["ok"])
+        contract = status["first_configuration"]
+        self.assertTrue(contract["must_ask_user_before_configuring"])
+        required = " ".join(contract["required_inputs"])
+        self.assertIn("site address", required)
+        self.assertIn("member account", required)
+        self.assertIn("password", required)
+        self.assertIn("project IDs", required)
+        self.assertIn("Ask the user", status["next_step"])
+
     def test_limited_member_gets_no_write_tools(self) -> None:
         client = FakeClient("limited", [group("limited", {"my": ["index"]}, name="受限")])
         names = {item["name"] for item in ZentaoMemberTools(client=client).tool_definitions()}
-        self.assertEqual(names, {"connection_status", "who_am_i", "list_my_work"})
+        self.assertEqual(
+            names,
+            {
+                "connection_status",
+                "who_am_i",
+                "list_my_work",
+                "get_developer_daily_automation_spec",
+            },
+        )
         self.assertFalse(any("delete" in name for name in names))
+
+    def test_daily_automation_requires_developer_role_and_live_bug_read(self) -> None:
+        privileges = {"project": ["browse"], "bug": ["browse", "view"]}
+        developer = ZentaoMemberTools(
+            client=FakeClient("dev1", [group("dev1", privileges)])
+        ).get_developer_daily_automation_spec({})
+        self.assertTrue(developer["eligible"])
+        self.assertEqual(developer["kind"], "heartbeat")
+        self.assertEqual(developer["schedule"]["hour"], 7)
+        self.assertIn("不要修改源码", developer["prompt"])
+        self.assertIn("不要准备或执行任何禅道", developer["prompt"])
+
+        tester = ZentaoMemberTools(
+            client=FakeClient(
+                "qa1",
+                [group("qa1", privileges, name="测试", role="qa")],
+                account_role="qa",
+            )
+        ).get_developer_daily_automation_spec({})
+        self.assertFalse(tester["eligible"])
 
     def test_developer_gets_bug_analysis_and_only_permitted_writes(self) -> None:
         privileges = {
@@ -218,6 +288,10 @@ class DynamicToolTests(unittest.TestCase):
         definitions = ZentaoMemberTools(client=client).tool_definitions()
         by_name = {item["name"]: item for item in definitions}
         self.assertIn("scan_new_bugs", by_name)
+        self.assertIn("scan_new_bugs_scheduled", by_name)
+        self.assertIn("save_bug_solution_package", by_name)
+        self.assertIn("get_bug_solution_package", by_name)
+        self.assertIn("list_bug_solution_packages", by_name)
         self.assertIn("get_bug_analysis_context", by_name)
         self.assertIn("download_bug_attachment", by_name)
         self.assertIn("prepare_bug_action", by_name)
@@ -229,6 +303,8 @@ class DynamicToolTests(unittest.TestCase):
         self.assertEqual(set(actions), {"resolve", "comment"})
         self.assertFalse(by_name["execute_confirmed_write"]["annotations"]["readOnlyHint"])
         self.assertTrue(by_name["execute_confirmed_write"]["annotations"]["destructiveHint"])
+        self.assertFalse(by_name["save_bug_solution_package"]["annotations"]["readOnlyHint"])
+        self.assertFalse(by_name["save_bug_solution_package"]["annotations"]["destructiveHint"])
 
     def test_container_creation_tools_follow_member_privileges(self) -> None:
         privileges = {
@@ -304,6 +380,79 @@ class BugAnalysisTests(unittest.TestCase):
             any("do not turn the analysis into a zentao comment" in step.lower()
                 for step in contract["recommended_next_steps"])
         )
+
+    def test_scheduled_scan_persists_zero_baseline_then_detects_first_bug(self) -> None:
+        client = self._client()
+        client.bugs = []
+        with tempfile.TemporaryDirectory() as directory:
+            tools = ZentaoMemberTools(client=client, state_root=Path(directory))
+            baseline = tools.scan_new_bugs_scheduled({"project_id": 101})
+            self.assertEqual(baseline["next_after_bug_id"], 0)
+            self.assertEqual(baseline["pending_bug_ids"], [])
+
+            client.bugs = [
+                {"id": 1, "project": 101, "title": "First Bug", "assignedTo": {"account": "dev1"}}
+            ]
+            detected = tools.scan_new_bugs_scheduled({"project_id": 101})
+            self.assertEqual(detected["pending_bug_ids"], [1])
+            repeated = tools.scan_new_bugs_scheduled({"project_id": 101})
+            self.assertEqual(repeated["pending_bug_ids"], [1])
+        self.assertEqual(client.writes, [])
+
+    def test_solution_package_is_complete_cross_session_and_clears_pending(self) -> None:
+        client = self._client()
+        with tempfile.TemporaryDirectory() as directory:
+            tools = ZentaoMemberTools(client=client, state_root=Path(directory))
+            tools.scan_new_bugs_scheduled({"project_id": 101})
+            client.bugs.insert(
+                0,
+                {"id": 13, "project": 101, "title": "New camera crash", "assignedTo": {"account": "dev1"}},
+            )
+            client.bug_detail = {
+                **client.bug_detail,
+                "id": 13,
+                "title": "New camera crash",
+                "status": "active",
+                "customEvidence": "preserve arbitrary scoped Bug fields",
+            }
+            detected = tools.scan_new_bugs_scheduled({"project_id": 101})
+            self.assertEqual(detected["pending_bug_ids"], [13])
+            with self.assertRaisesRegex(ZentaoError, "solution package"):
+                tools.complete_scheduled_bug({"project_id": 101, "bug_id": 13})
+
+            saved = tools.save_bug_solution_package(
+                {"bug_id": 13, "analysis": complete_solution_analysis()}
+            )
+            self.assertTrue(saved["handoff_ready"])
+            package_path = Path(saved["package_path"])
+            markdown_path = Path(saved["markdown_path"])
+            self.assertTrue(package_path.is_file())
+            self.assertTrue(markdown_path.is_file())
+
+            handoff = tools.get_bug_solution_package({"project_id": 101, "bug_id": 13})
+            package = handoff["package"]
+            self.assertEqual(package["bug_context"]["bug"]["customEvidence"], "preserve arbitrary scoped Bug fields")
+            self.assertEqual([item["id"] for item in package["bug_context"]["comments"]], [1])
+            self.assertEqual([item["id"] for item in package["bug_context"]["attachments"]], [21])
+            self.assertEqual(package["analysis"]["analysis_status"], "ready")
+            self.assertIn("# Bug #13 解决方案包", handoff["markdown"])
+            listed = tools.list_bug_solution_packages({"project_id": 101})
+            self.assertEqual([item["bug_id"] for item in listed["packages"]], [13])
+
+            completed = tools.complete_scheduled_bug({"project_id": 101, "bug_id": 13})
+            self.assertEqual(completed["pending_bug_ids"], [])
+        self.assertEqual(client.writes, [])
+
+    def test_solution_package_rejects_incomplete_analysis_without_writing(self) -> None:
+        client = self._client()
+        analysis = complete_solution_analysis()
+        del analysis["verification_plan"]
+        with tempfile.TemporaryDirectory() as directory:
+            tools = ZentaoMemberTools(client=client, state_root=Path(directory))
+            with self.assertRaisesRegex(ZentaoError, "verification_plan"):
+                tools.save_bug_solution_package({"bug_id": 12, "analysis": analysis})
+            self.assertEqual(list(Path(directory).rglob("solution-package.json")), [])
+        self.assertEqual(client.writes, [])
 
     def test_attachment_download_is_bound_to_bug_references(self) -> None:
         client = self._client()
@@ -404,6 +553,15 @@ class BugAnalysisTests(unittest.TestCase):
         )
         self.assertEqual(executed["postcondition"]["actual_status"], "closed")
         self.assertTrue(executed["postcondition"]["verified"])
+        screenshot = executed["ui_verification"]
+        self.assertTrue(screenshot["required"])
+        self.assertEqual(screenshot["status"], "pending_real_ui_screenshot")
+        self.assertEqual(screenshot["object_type"], "bug")
+        self.assertEqual(screenshot["object_id"], 12)
+        self.assertEqual(
+            screenshot["web_url"], "http://127.0.0.1/zentao/bug-view-12.html"
+        )
+        self.assertIn("never repeat the write", screenshot["instruction"])
 
 
 class ConfirmationPolicyAndCacheTests(unittest.TestCase):
@@ -725,6 +883,10 @@ class ContainerCreationTests(unittest.TestCase):
         self.assertEqual(executed["created_id"], 901)
         self.assertTrue(executed["scope_update_required"])
         self.assertNotIn(901, client.config.allowed_project_ids)
+        self.assertEqual(
+            executed["ui_verification"]["web_url"],
+            "http://127.0.0.1/zentao/project-view-901.html",
+        )
 
     def test_container_creation_aborts_if_permission_is_revoked(self) -> None:
         client = self._client()
@@ -977,6 +1139,54 @@ class ClientResponseTests(unittest.TestCase):
         ):
             with self.assertRaisesRegex(ZentaoError, "required"):
                 client.write("POST", "projects/101/executions", {"project": 101})
+
+
+class FirstConfigurationTests(unittest.TestCase):
+    def test_set_command_requires_site_address_and_project_scope(self) -> None:
+        parser = build_parser()
+        with self.assertRaises(SystemExit):
+            parser.parse_args(
+                ["set", "--account", "developer", "--allowed-project-ids", "101"]
+            )
+        with self.assertRaises(SystemExit):
+            parser.parse_args(
+                ["set", "--api-base", "https://zentao.example.com/zentao/my.html", "--account", "developer"]
+            )
+
+    def test_set_profile_rejects_blank_member_password(self) -> None:
+        args = SimpleNamespace(
+            api_base="https://zentao.example.com/zentao/my.html",
+            web_base=None,
+            account="developer",
+            allowed_project_ids="101",
+            timeout=20,
+            http_basic_account=None,
+            no_verify_tls=False,
+            write_confirmation_mode="manual",
+        )
+        with patch("configure.getpass.getpass", return_value=""):
+            with self.assertRaisesRegex(ValueError, "password is required"):
+                set_profile(args)
+
+    def test_set_profile_derives_web_url_without_exposing_password(self) -> None:
+        args = SimpleNamespace(
+            api_base="https://zentao.example.com/zentao/my.html",
+            web_base=None,
+            account="developer",
+            allowed_project_ids="101,102",
+            timeout=20,
+            http_basic_account=None,
+            no_verify_tls=False,
+            write_confirmation_mode="manual",
+        )
+        with patch("configure.getpass.getpass", return_value="secret"):
+            profile = set_profile(args)
+        self.assertEqual(
+            profile["api_base_url"],
+            "https://zentao.example.com/zentao/api.php/v1",
+        )
+        self.assertEqual(profile["web_base_url"], "https://zentao.example.com/zentao")
+        self.assertEqual(profile["allowed_project_ids"], [101, 102])
 
 
 class BugAttachmentCreationTests(unittest.TestCase):
