@@ -141,8 +141,12 @@ def import_mcp(args: argparse.Namespace) -> dict[str, Any]:
 
 def set_profile(args: argparse.Namespace) -> dict[str, Any]:
     password = getpass.getpass("ZenTao password: ")
+    if not password:
+        raise ValueError("ZenTao password is required for first configuration")
     basic_account = args.http_basic_account or ""
     basic_password = getpass.getpass("Outer HTTP Basic password (blank if unused): ") if basic_account else ""
+    if basic_account and not basic_password:
+        raise ValueError("Outer HTTP Basic password is required when its account is provided")
     api_base = normalized_api_base(args.api_base)
     return {
         "api_base_url": api_base,
@@ -235,10 +239,21 @@ def build_parser() -> argparse.ArgumentParser:
 
     set_parser = sub.add_parser("set", help="Interactively store a profile")
     set_parser.add_argument("--profile", default="production")
-    set_parser.add_argument("--api-base", default=DEFAULT_API_BASE)
-    set_parser.add_argument("--web-base", default=DEFAULT_WEB_BASE)
+    set_parser.add_argument(
+        "--api-base",
+        required=True,
+        help="ZenTao home/my.html URL or REST API v1 URL supplied by the user",
+    )
+    set_parser.add_argument(
+        "--web-base",
+        help="ZenTao web base URL; omitted means derive it from --api-base",
+    )
     set_parser.add_argument("--account", required=True)
-    set_parser.add_argument("--allowed-project-ids", default=",".join(map(str, DEFAULT_ALLOWED_PROJECTS)))
+    set_parser.add_argument(
+        "--allowed-project-ids",
+        required=True,
+        help="Comma-separated project IDs explicitly authorized by the user",
+    )
     set_parser.add_argument("--timeout", type=float, default=20)
     set_parser.add_argument("--http-basic-account")
     set_parser.add_argument("--no-verify-tls", action="store_true")

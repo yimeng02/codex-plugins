@@ -295,7 +295,7 @@ class ZentaoClient:
         self._token = self.config.token.strip()
 
     def _base_headers(self) -> dict[str, str]:
-        headers = {"Accept": "application/json", "User-Agent": "zentao-member-ops/1.0.0"}
+        headers = {"Accept": "application/json", "User-Agent": "zentao-member-ops/1.2.0"}
         if self.config.http_basic_account:
             raw = f"{self.config.http_basic_account}:{self.config.http_basic_password}".encode()
             headers["Authorization"] = f"Basic {base64.b64encode(raw).decode()}"
