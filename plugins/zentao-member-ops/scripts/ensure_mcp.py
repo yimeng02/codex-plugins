@@ -11,7 +11,7 @@ from pathlib import Path
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 MCP_FILE = PLUGIN_ROOT / ".mcp.json"
-PLUGIN_SELECTOR = "zentao-member-ops@personal"
+PLUGIN_SELECTOR = "zentao-member-ops@yimeng02"
 
 
 def run(*args: str) -> subprocess.CompletedProcess[str]:
@@ -23,8 +23,8 @@ def inspect() -> dict[str, object]:
     servers = payload.get("mcpServers", {}) if isinstance(payload, dict) else {}
     definition = servers.get("zentao-member-ops") if isinstance(servers, dict) else None
     listing = run("codex", "plugin", "list")
-    installed = "zentao-member-ops@personal" in listing.stdout and "installed, enabled" in next(
-        (line for line in listing.stdout.splitlines() if "zentao-member-ops@personal" in line),
+    installed = PLUGIN_SELECTOR in listing.stdout and "installed, enabled" in next(
+        (line for line in listing.stdout.splitlines() if PLUGIN_SELECTOR in line),
         "",
     )
     global_mcp = run("codex", "mcp", "get", "zentao-member-ops")
@@ -35,6 +35,12 @@ def inspect() -> dict[str, object]:
         "plugin_installed_enabled": installed,
         "global_mcp_present": global_mcp.returncode == 0,
         "effective_connector": "plugin-bundled" if isinstance(definition, dict) else "missing",
+        "profile_selection_source": "credentials.active_profile",
+        "stale_profile_override_present": bool(
+            isinstance(definition, dict)
+            and isinstance(definition.get("env"), dict)
+            and definition["env"].get("ZENTAO_PROFILE")
+        ),
         "new_task_required_after_install": True,
     }
 

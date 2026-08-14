@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import json
+import os
 import sys
 import tempfile
 import unittest
@@ -14,7 +16,13 @@ SCRIPTS_ROOT = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(MCP_ROOT))
 sys.path.insert(0, str(SCRIPTS_ROOT))
 
-from configure import build_parser, set_profile  # noqa: E402
+from configure import (  # noqa: E402
+    build_parser,
+    safe_status,
+    save_profile,
+    set_profile,
+    switch_profile,
+)
 from policy import (  # noqa: E402
     BUG_ACTIONS,
     STORY_ACTIONS,
@@ -1187,6 +1195,233 @@ class FirstConfigurationTests(unittest.TestCase):
         )
         self.assertEqual(profile["web_base_url"], "https://zentao.example.com/zentao")
         self.assertEqual(profile["allowed_project_ids"], [101, 102])
+
+
+class ProfileSynchronizationTests(unittest.TestCase):
+    @staticmethod
+    def _profile(account: str, project_id: int) -> dict:
+        return {
+            "api_base_url": f"https://{account}.example.com/zentao/api.php/v1",
+            "web_base_url": f"https://{account}.example.com/zentao",
+            "account": account,
+            "password": "secret",
+            "allowed_project_ids": [project_id],
+            "timeout_seconds": 20,
+            "verify_tls": True,
+            "write_confirmation_mode": "manual",
+        }
+
+    @staticmethod
+    def _write_json(path: Path, payload: dict) -> None:
+        path.write_text(json.dumps(payload), encoding="utf-8")
+
+    def test_bundled_mcp_manifest_does_not_pin_a_profile(self) -> None:
+        manifest = json.loads((Path(__file__).resolve().parents[1] / ".mcp.json").read_text())
+        server = manifest["mcpServers"]["zentao-member-ops"]
+        self.assertNotIn("ZENTAO_PROFILE", server.get("env", {}))
+
+    def test_plugin_version_is_plain_three_part_semver(self) -> None:
+        manifest = json.loads(
+            (Path(__file__).resolve().parents[1] / ".codex-plugin" / "plugin.json").read_text()
+        )
+        self.assertRegex(manifest["version"], r"^\d+\.\d+\.\d+$")
+
+    def test_new_profile_becomes_active_and_clears_stale_mcp_override(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            credentials = root / "credentials.json"
+            manifest = root / ".mcp.json"
+            self._write_json(
+                credentials,
+                {
+                    "active_profile": "old",
+                    "profiles": {"old": self._profile("old", 1)},
+                },
+            )
+            self._write_json(
+                manifest,
+                {
+                    "mcpServers": {
+                        "zentao-member-ops": {
+                            "command": "python3",
+                            "args": ["./mcp/server.py"],
+                            "env": {"ZENTAO_PROFILE": "old", "KEEP_ME": "yes"},
+                        }
+                    }
+                },
+            )
+
+            sync = save_profile(
+                credentials,
+                "new",
+                self._profile("new", 2),
+                mcp_path=manifest,
+            )
+
+            status = safe_status(credentials)
+            self.assertEqual(status["active_profile"], "new")
+            self.assertEqual(status["profile_count"], 2)
+            self.assertEqual(sorted(status["profiles"]), ["new", "old"])
+            self.assertTrue(status["profiles"]["new"]["active"])
+            server = json.loads(manifest.read_text())["mcpServers"]["zentao-member-ops"]
+            self.assertEqual(server["env"], {"KEEP_ME": "yes"})
+            self.assertTrue(sync["mcp_sync"]["stale_profile_override_removed"])
+            self.assertTrue(sync["restart_required"])
+            self.assertIn("Restart Codex", " ".join(sync["next_steps"]))
+
+    def test_switch_profile_updates_selector_and_returns_all_profiles(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            credentials = root / "credentials.json"
+            manifest = root / ".mcp.json"
+            self._write_json(
+                credentials,
+                {
+                    "active_profile": "developer",
+                    "profiles": {
+                        "developer": self._profile("developer", 1),
+                        "qa": self._profile("qa", 2),
+                    },
+                },
+            )
+            self._write_json(
+                manifest,
+                {
+                    "mcpServers": {
+                        "zentao-member-ops": {
+                            "command": "python3",
+                            "args": ["./mcp/server.py"],
+                            "env": {"ZENTAO_PROFILE": "developer"},
+                        }
+                    }
+                },
+            )
+
+            result = switch_profile(credentials, "qa", mcp_path=manifest)
+
+            self.assertEqual(result["active_profile"], "qa")
+            self.assertEqual(result["available_profiles"], ["developer", "qa"])
+            self.assertTrue(result["profiles"]["qa"]["active"])
+            server = json.loads(manifest.read_text())["mcpServers"]["zentao-member-ops"]
+            self.assertNotIn("env", server)
+
+    def test_connector_loads_active_profile_and_reports_catalog(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            credentials = Path(directory) / "credentials.json"
+            self._write_json(
+                credentials,
+                {
+                    "active_profile": "qa",
+                    "profiles": {
+                        "developer": self._profile("developer", 1),
+                        "qa": self._profile("qa", 2),
+                    },
+                },
+            )
+            with patch.dict(
+                os.environ,
+                {
+                    "ZENTAO_CREDENTIALS_FILE": str(credentials),
+                    "ZENTAO_PROFILE": "",
+                },
+                clear=False,
+            ):
+                config = ConnectorConfig.load()
+            self.assertEqual(config.profile_name, "qa")
+            self.assertEqual(config.active_profile, "qa")
+            self.assertEqual(config.profile_selection_source, "credentials.active_profile")
+            self.assertEqual(config.available_profiles, ("developer", "qa"))
+            self.assertEqual(config.profile_summaries["developer"]["allowed_project_ids"], [1])
+
+    def test_connector_rejects_a_stale_environment_profile(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            credentials = Path(directory) / "credentials.json"
+            self._write_json(
+                credentials,
+                {
+                    "active_profile": "qa",
+                    "profiles": {"qa": self._profile("qa", 2)},
+                },
+            )
+            with patch.dict(
+                os.environ,
+                {
+                    "ZENTAO_CREDENTIALS_FILE": str(credentials),
+                    "ZENTAO_PROFILE": "deleted-profile",
+                },
+                clear=False,
+            ):
+                with self.assertRaisesRegex(ZentaoError, "Available profiles: qa"):
+                    ConnectorConfig.load()
+
+    def test_existing_environment_override_is_visible_not_ambiguous(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            credentials = Path(directory) / "credentials.json"
+            self._write_json(
+                credentials,
+                {
+                    "active_profile": "qa",
+                    "profiles": {
+                        "developer": self._profile("developer", 1),
+                        "qa": self._profile("qa", 2),
+                    },
+                },
+            )
+            with patch.dict(
+                os.environ,
+                {
+                    "ZENTAO_CREDENTIALS_FILE": str(credentials),
+                    "ZENTAO_PROFILE": "developer",
+                },
+                clear=False,
+            ):
+                config = ConnectorConfig.load()
+            status = ZentaoMemberTools(client=ZentaoClient(config)).connection_status({})
+            self.assertEqual(status["active_profile"], "qa")
+            self.assertEqual(status["profile"], "developer")
+            self.assertTrue(status["profiles"]["qa"]["active"])
+            self.assertTrue(
+                status["profiles"]["developer"]["selected_by_running_process"]
+            )
+            self.assertIn("environment override", status["profile_override_warning"])
+
+    def test_connection_status_lists_profiles_without_secrets(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            credentials = Path(directory) / "credentials.json"
+            self._write_json(
+                credentials,
+                {
+                    "active_profile": "qa",
+                    "profiles": {
+                        "developer": self._profile("developer", 1),
+                        "qa": self._profile("qa", 2),
+                    },
+                },
+            )
+            with patch.dict(
+                os.environ,
+                {
+                    "ZENTAO_CREDENTIALS_FILE": str(credentials),
+                    "ZENTAO_PROFILE": "",
+                },
+                clear=False,
+            ):
+                config = ConnectorConfig.load()
+            status = ZentaoMemberTools(client=ZentaoClient(config)).connection_status({})
+            self.assertEqual(status["active_profile"], "qa")
+            self.assertEqual(status["available_profiles"], ["developer", "qa"])
+            self.assertEqual(status["profile_selection_source"], "credentials.active_profile")
+            self.assertNotIn("secret", json.dumps(status))
+            for profile in status["profiles"].values():
+                self.assertNotIn("password", profile)
+                self.assertNotIn("token", profile)
+
+    def test_parser_exposes_profile_listing_and_switching(self) -> None:
+        parser = build_parser()
+        self.assertEqual(parser.parse_args(["profiles"]).command, "profiles")
+        args = parser.parse_args(["use", "--profile", "qa"])
+        self.assertEqual(args.command, "use")
+        self.assertEqual(args.profile, "qa")
 
 
 class BugAttachmentCreationTests(unittest.TestCase):

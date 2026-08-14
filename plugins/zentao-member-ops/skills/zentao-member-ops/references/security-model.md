@@ -2,7 +2,7 @@
 
 ## Authorization
 
-The connector authenticates as one ZenTao account, reads `/user` and `/groups`, selects only groups containing that account, and unions their method privileges. Tool availability and preparation checks use this effective set. ZenTao checks the same account again on every API call and is the final authority.
+The connector may store multiple named ZenTao profiles but authenticates as exactly one active account per MCP process. It reads `/user` and `/groups`, selects only groups containing that account, and unions their method privileges. Tool availability and preparation checks use this effective set. ZenTao checks the same account again on every API call and is the final authority.
 
 The MCP is one dynamic server, not copied role templates. Each `tools/list` is generated from the active account's effective privileges. Existing-item actions also require corresponding read access, so a global comment privilege cannot expose an object the account cannot view.
 
@@ -26,9 +26,11 @@ Bug and requirement processing has a stricter delivery boundary: the plugin retr
 
 ## Credentials
 
-Credentials live outside the plugin at `~/.config/codex/zentao-member-ops/credentials.json` with mode `0600`. They are never returned by tools, logged, embedded in the plugin, or placed in commands. Tokens remain in process memory.
+Credentials live outside the plugin at `~/.config/codex/zentao-member-ops/credentials.json` with mode `0600`. The file may contain multiple named profiles, and its top-level `active_profile` is the single source of truth for the next MCP process. They are never returned by tools, logged, embedded in the plugin, or placed in commands. Tokens remain in process memory.
 
 On first configuration, require the user to provide the ZenTao address, member account, member password, and explicit project allow list. Ask separately about an outer HTTP Basic layer and collect those credentials only when it exists. Never guess or silently inherit a missing value. Enter passwords through hidden prompts and show only redacted status/test output.
+
+Adding or updating a profile must atomically save that profile, select it as active, synchronize the bundled `.mcp.json` by removing a stale `ZENTAO_PROFILE` override, and show all profiles in redacted form. Switching must only select an existing profile and perform the same MCP synchronization. Do not create a fixed MCP per role or manually place the active profile in launcher environment variables. Every add, update, import, or switch requires a complete Codex restart and a new task because the running MCP process cannot safely change identity in place. The new task must verify `connection_status` and `who_am_i` before operations.
 
 ## Post-write UI evidence
 

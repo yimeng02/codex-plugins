@@ -1,7 +1,7 @@
 interface:
   display_name: "禅道成员操作"
-  short_description: "按成员权限安全操作禅道，写入后展示真实界面截图"
-  default_prompt: "使用 $zentao-member-ops 配置并操作禅道；首次配置先向我收集地址、账号、密码和项目范围，写入经确认执行后展示真实禅道结果截图。"
+  short_description: "支持多身份切换，按成员权限安全操作禅道"
+  default_prompt: "使用 $zentao-member-ops 配置并操作禅道；支持查看、新增和切换多个连接身份，切换后提醒我重启并核对身份，写入经确认执行后展示真实禅道结果截图。"
 
 dependencies:
   tools:

@@ -34,7 +34,7 @@ from zentao_client import (
 
 
 SERVER_NAME = "zentao-member-ops"
-SERVER_VERSION = "1.2.0"
+SERVER_VERSION = "1.3.0"
 
 PROJECT_FIELDS = (
     "id",
@@ -1439,9 +1439,29 @@ class ZentaoMemberTools:
         return execution
 
     def connection_status(self, _: dict[str, Any]) -> dict[str, Any]:
+        active_profile = getattr(self.config, "active_profile", self.config.profile_name)
+        available_profiles = list(
+            getattr(self.config, "available_profiles", (self.config.profile_name,))
+        )
+        profile_summaries = getattr(self.config, "profile_summaries", {})
         result: dict[str, Any] = {
             "configured": self.config.credentials_configured,
             "profile": self.config.profile_name,
+            "active_profile": active_profile,
+            "profile_selection_source": getattr(
+                self.config, "profile_selection_source", "credentials.active_profile"
+            ),
+            "profile_override_warning": (
+                "The running MCP process is using an explicit ZENTAO_PROFILE environment "
+                "override instead of credentials.json active_profile. Synchronize the "
+                "plugin launcher and restart Codex unless this was an intentional test."
+                if getattr(self.config, "profile_selection_source", "")
+                == "environment.ZENTAO_PROFILE"
+                else None
+            ),
+            "profile_count": len(available_profiles),
+            "available_profiles": available_profiles,
+            "profiles": profile_summaries,
             "api_base_url": self.config.api_base,
             "web_base_url": self.config.web_base,
             "transport_encrypted": self.config.transport_encrypted,
@@ -1491,6 +1511,18 @@ class ZentaoMemberTools:
                     "Do not guess, inherit, or silently default a missing address, account, password, or project scope.",
                     "Do not echo passwords, place them in commands, logs, screenshots, source files, or Git.",
                     "Test the saved profile and show only the redacted configuration status.",
+                ],
+            },
+            "profile_management": {
+                "supports_multiple_profiles": True,
+                "single_source_of_truth": "credentials.json active_profile",
+                "list_command": "python3 scripts/configure.py profiles",
+                "switch_command": "python3 scripts/configure.py use --profile <name>",
+                "restart_required_after_add_or_switch": True,
+                "next_steps_after_add_or_switch": [
+                    "Restart Codex.",
+                    "Start a new Codex task.",
+                    "Call connection_status and who_am_i to verify the selected identity.",
                 ],
             },
         }
