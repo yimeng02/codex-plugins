@@ -50,29 +50,9 @@ codex plugin marketplace upgrade yimeng02
 codex plugin add zentao-member-ops@yimeng02
 ```
 
-## 可选安装方式：个人本地市场
+## 唯一源码与市场源
 
-```bash
-git clone https://github.com/yimeng02/zentao-member-ops ~/plugins/zentao-member-ops
-codex plugin add zentao-member-ops@personal
-```
-
-若个人市场尚未登记该插件，可在 `~/.agents/plugins/marketplace.json` 的 `plugins` 数组中加入：
-
-```json
-{
-  "name": "zentao-member-ops",
-  "source": {
-    "source": "local",
-    "path": "./plugins/zentao-member-ops"
-  },
-  "policy": {
-    "installation": "AVAILABLE",
-    "authentication": "ON_INSTALL"
-  },
-  "category": "Productivity"
-}
-```
+本插件只在 [`yimeng02/codex-plugins`](https://github.com/yimeng02/codex-plugins) 中维护和发布；源码目录为 [`plugins/zentao-member-ops`](https://github.com/yimeng02/codex-plugins/tree/main/plugins/zentao-member-ops)。原独立仓库已归档，不再作为源码、安装源或更新源。
 
 ## 首次配置
 
