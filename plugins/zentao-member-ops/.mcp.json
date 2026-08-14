@@ -6,9 +6,6 @@
       "args": [
         "./mcp/server.py"
       ],
-      "env": {
-        "ZENTAO_PROFILE": "production"
-      },
       "default_tools_approval_mode": "writes"
     }
   }

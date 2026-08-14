@@ -1,6 +1,23 @@
 # 更新日志
 
-本项目使用语义化版本号。
+本项目使用纯三段语义化版本号，不附加 `+codex.*`：小更新递增第三位，中更新递增第二位，大版本更新递增第一位。
+
+## [1.3.0] - 2026-08-14
+
+### 修复
+
+- 修复新增或更新 profile 后，插件 MCP 启动清单中的旧 `ZENTAO_PROFILE` 仍覆盖 `credentials.json.active_profile`，导致连接器继续加载旧身份的问题。
+
+### 新增
+
+- 支持保存、脱敏列出和切换多个禅道环境或成员身份。
+- `set`、`import-mcp` 与 `use` 自动同步活动 profile 和插件 MCP 启动清单，并返回重启 Codex、新建任务、调用 `connection_status`/`who_am_i` 的后续步骤。
+- `connection_status` 展示当前活动 profile、身份选择来源、全部可用 profile 和脱敏配置摘要。
+
+### 安全
+
+- `credentials.json.active_profile` 成为唯一活动身份来源；插件自带 `.mcp.json` 不再固定某个身份。
+- 过期或不存在的 `ZENTAO_PROFILE` 环境选择会明确报错并列出可用 profile，不再静默使用未配置默认值。
 
 ## [1.2.0] - 2026-08-13
 

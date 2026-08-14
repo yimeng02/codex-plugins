@@ -2,11 +2,12 @@
 
 `zentao-member-ops` 是面向 Codex 的禅道开源版 21.7.1 插件。它按当前登录成员的实时分组与权限动态提供 MCP 工具，用于读取和操作项目、产品、执行、Bug、需求与任务，并以“先预览、再确认、写后强制回读、最后展示真实禅道界面截图”的方式保护写入。
 
-当前版本：`1.2.0`
+当前版本：`1.3.0`
 
 ## 主要能力
 
 - 首次配置时，必须由用户提供禅道地址、成员账号、成员密码和明确授权的项目 ID；存在外层 HTTP Basic 时再额外收集对应账号与密码。
+- 支持保存多个禅道地址或成员身份，并通过活动 profile 相互切换；新增或切换时自动同步私有 profile 与插件 MCP 启动配置，并展示全部脱敏配置。
 - 依据账号实际分组和权限动态开放项目、Bug、需求、任务、评论、指派和状态流转等 MCP 工具，不模拟管理员权限。
 - 所有写入先生成一次性预览和确认令牌；默认 `manual` 模式下必须获得用户明确确认。
 - `safe-auto` 仅允许用户主动配置后自动确认低风险评论；创建、上传、指派、字段或状态变更及高风险操作仍需用户确认。
@@ -97,6 +98,41 @@ python3 scripts/configure.py status
 python3 scripts/diagnose.py
 ```
 
+新增或更新 profile 后，命令会把它设为活动身份、移除 MCP 启动清单中可能残留的旧 `ZENTAO_PROFILE` 固定值，并输出全部已保存 profile 的脱敏摘要。密码、Token 和 HTTP Basic 密码不会显示。
+
+## 多配置身份与切换
+
+同一插件可以保存多个禅道环境或成员身份，例如 `developer`、`qa`、`local-test`。再次执行 `set --profile <name>` 会新增或更新该 profile，并自动将它设为活动身份：
+
+```bash
+python3 scripts/configure.py set \
+  --profile qa \
+  --api-base https://zentao.example.com/zentao/my.html \
+  --account QA_ACCOUNT \
+  --allowed-project-ids 101,102 \
+  --test
+```
+
+查看当前活动身份和全部已有配置：
+
+```bash
+python3 scripts/configure.py profiles
+```
+
+切换到一个已存在的身份：
+
+```bash
+python3 scripts/configure.py use --profile developer
+```
+
+新增、更新或切换后必须按命令返回的提示执行：
+
+1. 完全重启 Codex，让插件自带的 MCP 进程重新读取活动 profile；
+2. 新建一个 Codex 任务；
+3. 调用 `connection_status` 和 `who_am_i`，核对 `active_profile`、账号、成员分组、项目范围和全部脱敏 profile。
+
+`credentials.json` 的 `active_profile` 是唯一身份选择来源。不要在 `.mcp.json` 或其他启动环境中手工固定 `ZENTAO_PROFILE`，否则会形成与活动 profile 不一致的旧身份覆盖；连接器发现无效的环境身份时会直接报错并列出可用 profile。
+
 ## 源码映射
 
 把已授权的禅道项目映射到正确的本地源码树：
@@ -121,7 +157,7 @@ python3 scripts/configure.py map-source \
 - “预览把 Bug 123 指派给开发成员，但先不要执行。”
 - “预览关闭 Bug 123，等我确认后再执行；成功后展示真实禅道结果页截图。”
 
-MCP 的 `connection_status` 会返回脱敏配置状态、当前确认策略、项目范围及首次配置要求。可用工具会随账号分组和禅道实时权限变化。
+MCP 的 `connection_status` 会返回当前活动身份、身份选择来源、全部脱敏 profile、当前确认策略、项目范围及首次配置要求。可用工具会随账号分组和禅道实时权限变化。
 
 ## 写入与截图流程
 
@@ -154,6 +190,7 @@ API JSON、预览内容、生成的 HTML、模拟页面和登录页截图都不�
 ## 常见问题
 
 - 安装后找不到 Skill 或 MCP：新建 Codex 任务，旧任务不会自动加载新的插件版本。
+- 新增或切换身份后仍显示旧账号：先运行 `python3 scripts/configure.py profiles` 核对活动 profile，再完全重启 Codex、新建任务，并调用 `connection_status` 与 `who_am_i`；不要在 `.mcp.json` 中固定 `ZENTAO_PROFILE`。
 - 返回 401/登录失败：先确认禅道成员密码；若页面有额外认证，再配置外层 HTTP Basic 账号与密码。
 - 写入成功但列表仍是旧数据：优先检查 `cache_refresh.authoritative_read`，再用对应读取工具传入 `refresh=true`。
 - 写后无法截图：确认浏览器已经完成禅道登录和外层 HTTP Basic；不要为了截图再次执行写入。
@@ -168,3 +205,5 @@ python3 -m py_compile mcp/server.py mcp/zentao_client.py scripts/configure.py sc
 ```
 
 版本记录见 [CHANGELOG.md](CHANGELOG.md)。
+
+版本号使用纯三段语义化格式，不附加 `+codex.*`：小更新递增第三位，中更新递增第二位，大版本更新递增第一位。

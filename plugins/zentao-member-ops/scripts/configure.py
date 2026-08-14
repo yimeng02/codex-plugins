@@ -7,6 +7,7 @@ import argparse
 import getpass
 import json
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -20,6 +21,8 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.11+ is expected.
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 MCP_ROOT = PLUGIN_ROOT / "mcp"
+MCP_FILE = PLUGIN_ROOT / ".mcp.json"
+PROFILE_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 sys.path.insert(0, str(MCP_ROOT))
 
 from zentao_client import (  # noqa: E402
@@ -54,21 +57,69 @@ def read_credentials(path: Path) -> dict[str, Any]:
     return payload
 
 
-def atomic_write(path: Path, payload: dict[str, Any]) -> None:
+def atomic_write_json(path: Path, payload: dict[str, Any], *, private: bool) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    descriptor, temp_name = tempfile.mkstemp(prefix="credentials-", suffix=".json", dir=path.parent)
+    existing_mode = path.stat().st_mode & 0o777 if path.exists() else None
+    descriptor, temp_name = tempfile.mkstemp(
+        prefix=f"{path.stem}-", suffix=".json", dir=path.parent
+    )
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
             json.dump(payload, handle, ensure_ascii=False, indent=2)
             handle.write("\n")
             handle.flush()
             os.fsync(handle.fileno())
-        os.chmod(temp_name, 0o600)
+        mode = 0o600 if private else (existing_mode or 0o644)
+        os.chmod(temp_name, mode)
         os.replace(temp_name, path)
-        os.chmod(path, 0o600)
+        os.chmod(path, mode)
     finally:
         if os.path.exists(temp_name):
             os.unlink(temp_name)
+
+
+def atomic_write(path: Path, payload: dict[str, Any]) -> None:
+    atomic_write_json(path, payload, private=True)
+
+
+def validate_profile_name(profile_name: str) -> str:
+    profile_name = str(profile_name or "").strip()
+    if not PROFILE_NAME_RE.fullmatch(profile_name):
+        raise ValueError(
+            "Profile name must start with a letter or digit and contain only "
+            "letters, digits, dots, underscores, or hyphens (maximum 64 characters)"
+        )
+    return profile_name
+
+
+def synchronize_mcp_manifest(mcp_path: Path = MCP_FILE) -> dict[str, Any]:
+    """Remove stale profile pinning so credentials.active_profile is authoritative."""
+    payload = json.loads(mcp_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"MCP file {mcp_path} must contain an object")
+    servers = payload.get("mcpServers")
+    if not isinstance(servers, dict):
+        raise ValueError(f"MCP file {mcp_path} has no mcpServers object")
+    server = servers.get("zentao-member-ops")
+    if not isinstance(server, dict):
+        raise ValueError(f"MCP file {mcp_path} has no zentao-member-ops server")
+
+    env = server.get("env")
+    removed = isinstance(env, dict) and "ZENTAO_PROFILE" in env
+    if removed:
+        env.pop("ZENTAO_PROFILE", None)
+        if env:
+            server["env"] = env
+        else:
+            server.pop("env", None)
+        atomic_write_json(mcp_path, payload, private=False)
+
+    return {
+        "mcp_file": str(mcp_path),
+        "selection_source": "credentials.active_profile",
+        "synchronized": True,
+        "stale_profile_override_removed": removed,
+    }
 
 
 def derive_web_base(api_base: str) -> str:
@@ -162,11 +213,65 @@ def set_profile(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
-def save_profile(path: Path, profile_name: str, profile: dict[str, Any]) -> None:
+def restart_guidance() -> dict[str, Any]:
+    return {
+        "restart_required": True,
+        "next_steps": [
+            "Restart Codex so the plugin-bundled MCP process reloads the active profile.",
+            "Start a new Codex task after restart.",
+            "Call connection_status and who_am_i to verify the selected ZenTao identity.",
+        ],
+    }
+
+
+def save_profile(
+    path: Path,
+    profile_name: str,
+    profile: dict[str, Any],
+    *,
+    mcp_path: Path = MCP_FILE,
+) -> dict[str, Any]:
+    profile_name = validate_profile_name(profile_name)
+    # Validate and clean the launcher before changing the active selector. Both
+    # files are replaced atomically; a launcher-only cleanup is safe on failure.
+    mcp_sync = synchronize_mcp_manifest(mcp_path)
     payload = read_credentials(path)
     payload["active_profile"] = profile_name
     payload.setdefault("profiles", {})[profile_name] = profile
     atomic_write(path, payload)
+    return {
+        "saved": True,
+        "profile": profile_name,
+        "mcp_sync": mcp_sync,
+        **restart_guidance(),
+        **safe_status(path),
+    }
+
+
+def switch_profile(
+    path: Path,
+    profile_name: str,
+    *,
+    mcp_path: Path = MCP_FILE,
+) -> dict[str, Any]:
+    profile_name = validate_profile_name(profile_name)
+    payload = read_credentials(path)
+    profiles = payload.get("profiles", {})
+    if not isinstance(profiles, dict) or not isinstance(profiles.get(profile_name), dict):
+        available = ", ".join(sorted(str(name) for name in profiles)) or "none"
+        raise ValueError(f"Profile {profile_name!r} does not exist. Available profiles: {available}")
+    mcp_sync = synchronize_mcp_manifest(mcp_path)
+    previous = payload.get("active_profile")
+    payload["active_profile"] = profile_name
+    atomic_write(path, payload)
+    return {
+        "saved": True,
+        "profile": profile_name,
+        "previous_active_profile": previous,
+        "mcp_sync": mcp_sync,
+        **restart_guidance(),
+        **safe_status(path),
+    }
 
 
 def safe_status(path: Path) -> dict[str, Any]:
@@ -178,6 +283,7 @@ def safe_status(path: Path) -> dict[str, Any]:
             if not isinstance(profile, dict):
                 continue
             result_profiles[str(name)] = {
+                "active": str(name) == str(payload.get("active_profile")),
                 "api_base_url": profile.get("api_base_url"),
                 "web_base_url": profile.get("web_base_url"),
                 "account": profile.get("account"),
@@ -191,10 +297,13 @@ def safe_status(path: Path) -> dict[str, Any]:
                     profile.get("write_confirmation_mode", "manual")
                 ),
             }
+    available_profiles = sorted(result_profiles)
     return {
         "credentials_file": str(path),
         "exists": path.exists(),
         "active_profile": payload.get("active_profile"),
+        "profile_count": len(available_profiles),
+        "available_profiles": available_profiles,
         "profiles": result_profiles,
     }
 
@@ -277,6 +386,9 @@ def build_parser() -> argparse.ArgumentParser:
     confirmation_parser.add_argument("--mode", choices=WRITE_CONFIRMATION_MODES, required=True)
 
     sub.add_parser("status", help="Show configuration without secrets")
+    sub.add_parser("profiles", help="List every saved profile without secrets")
+    use_parser = sub.add_parser("use", help="Select an existing profile and synchronize MCP startup")
+    use_parser.add_argument("--profile", required=True)
     test_parser = sub.add_parser("test", help="Test an existing profile")
     test_parser.add_argument("--profile", default="production")
     return parser
@@ -286,8 +398,10 @@ def main() -> int:
     args = build_parser().parse_args()
     path = args.credentials_file.expanduser()
     try:
-        if args.command == "status":
+        if args.command in {"status", "profiles"}:
             result = safe_status(path)
+        elif args.command == "use":
+            result = switch_profile(path, args.profile)
         elif args.command == "test":
             result = test_profile(args.profile, path)
         elif args.command == "set-confirmation":
@@ -334,8 +448,7 @@ def main() -> int:
             }
         else:
             profile = import_mcp(args) if args.command == "import-mcp" else set_profile(args)
-            save_profile(path, args.profile, profile)
-            result = {"saved": True, "profile": args.profile, **safe_status(path)}
+            result = save_profile(path, args.profile, profile)
             if args.test:
                 result["test"] = test_profile(args.profile, path)
         print(json.dumps(result, ensure_ascii=False, indent=2))
