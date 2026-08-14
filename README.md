@@ -1,6 +1,6 @@
 # yimeng02 Codex Plugins
 
-这是 `yimeng02` 的公开 Codex 插件市场源，其他人添加该市场源后即可安装其中的插件。
+这是 `yimeng02` 的公开 Codex 插件市场源，也是其中插件的唯一源码仓库。其他人添加该市场源后即可安装插件。
 
 ## 添加市场源并安装
 
@@ -32,3 +32,5 @@ codex plugin add zentao-member-ops@yimeng02
 - Bug 与需求分析由当前 Codex 完成，不自动把方案评论到禅道。
 
 完整安装、首次配置、使用方式、安全模型及故障排查请参阅[插件说明](plugins/zentao-member-ops/README.md)，版本记录见[更新日志](plugins/zentao-member-ops/CHANGELOG.md)。
+
+`zentao-member-ops` 的权威源码位于本仓库的 [`plugins/zentao-member-ops`](plugins/zentao-member-ops)；原独立仓库已归档，不再作为源码或市场源。

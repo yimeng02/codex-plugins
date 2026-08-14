@@ -1,14 +1,20 @@
 {
   "name": "zentao-member-ops",
-  "version": "1.2.0",
+  "version": "1.2.0+codex.20260814020055",
   "description": "Member-aware ZenTao 21.7.1 access with guided first configuration, real post-write UI evidence, daily Bug scans, cross-session solution packages, and risk-gated writes.",
   "author": {
     "name": "yimeng02",
     "url": "https://github.com/yimeng02"
   },
-  "homepage": "https://github.com/yimeng02/zentao-member-ops",
-  "repository": "https://github.com/yimeng02/zentao-member-ops",
-  "keywords": ["zentao", "mcp", "codex", "bug", "project-management"],
+  "homepage": "https://github.com/yimeng02/codex-plugins/tree/main/plugins/zentao-member-ops",
+  "repository": "https://github.com/yimeng02/codex-plugins",
+  "keywords": [
+    "zentao",
+    "mcp",
+    "codex",
+    "bug",
+    "project-management"
+  ],
   "skills": "./skills/",
   "interface": {
     "displayName": "\u7985\u9053\u6210\u5458\u64cd\u4f5c",
