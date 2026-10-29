@@ -105,7 +105,7 @@ codex plugin add codex-memory-manager@yimeng02 --json
 
 更新完成后，检查实际安装版本并在本地新聊天再次调用工具。市场刷新和聊天工具加载分别验收。
 
-显式进程环境变量 `CODEX_MEMORY_HOME` 优先决定数据目录。未指定时，默认使用当前 MCP Python 用户主目录下的 `.codex-memory-manager`；若默认数据库尚不存在，而实际 `CODEX_HOME` 的父目录下已有 `.codex-memory-manager/memory.sqlite3`，则复用该旧库，便于 WSL 聊天继续使用原 Windows 用户的记忆。已有默认库时不会自动合并或替换数据库。
+显式 `CODEX_MEMORY_HOME` 优先。未指定时，优先复用 `CODEX_HOME` 父目录中已有的 `.codex-memory-manager/memory.sqlite3`；MCP 子进程未继承该变量时，从标准安装位置 `CODEX_HOME/plugins/cache/<市场>/codex-memory-manager/<版本>` 确定所属配置目录。没有对应旧库时回退到当前用户默认目录。路径选择不会合并、复制或替换数据库；如要使用其他库，请明确设置数据目录。
 
 Windows 与 WSL 的主目录不同；UI、诊断和 MCP 必须指向同一个数据目录，才能看到同一批记忆。运行可视化页面可使用与该运行环境匹配的启动脚本，或在同一执行环境、同一数据目录下运行 `python3 run.py serve`；Windows 可使用实际可用的 Python 启动器。
 
