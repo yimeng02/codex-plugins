@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -31,6 +32,7 @@ FILES = (
 FOLDERS = {
     "memory_manager": {".py"}, "web": {".html", ".js", ".css"},
     "skills": {".md", ".yaml"}, "tests": {".py"}, "docs": {".md"},
+    "hooks": {".py", ".json"},
 }
 
 
@@ -101,6 +103,21 @@ def build_legacy_mcp(python_path, data_dir):
     return {"mcpServers": {"memory-manager": server}}
 
 
+def build_hooks(python_path, data_dir):
+    """Pin this local install's runtime and database without granting hook trust."""
+    configuration = load_json((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"), "hooks.json")
+    python = str(Path(python_path).expanduser().resolve())
+    data = str(Path(data_dir).expanduser().resolve())
+    for groups in configuration["hooks"].values():
+        for group in groups:
+            for handler in group["hooks"]:
+                if os.name == "nt":
+                    handler["commandWindows"] = '"' + python + '" "' + '$' + '{PLUGIN_ROOT}/hooks/memory_context.py" --memory-home "' + data + '"'
+                else:
+                    handler["command"] = shlex.quote(python) + ' "' + '$' + '{PLUGIN_ROOT}/hooks/memory_context.py" --memory-home ' + shlex.quote(data)
+    return configuration
+
+
 def payload_files(root):
     root = Path(root)
     result = []
@@ -139,6 +156,19 @@ def copy_payload(source, destination):
         target = destination / path.relative_to(source)
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(path, target)
+
+
+def copy_codex_payload(source, destination):
+    """Codex currently loads lifecycle hooks only for its native manifest.
+
+    Keep the source's optional portable manifest for other consumers, but do not
+    let it shadow the native manifest in the Codex distribution.
+    """
+    copy_payload(source, destination)
+    destination = Path(destination)
+    if ((destination / "hooks" / "hooks.json").is_file()
+            and (destination / ".codex-plugin" / "plugin.json").is_file()):
+        (destination / "plugin.json").unlink(missing_ok=True)
 
 
 def payload_digest(root):
@@ -220,14 +250,18 @@ class Codex:
 
 
 def validate_source(source):
-    required = ["plugin.json", "mcp.json", ".mcp.json", ".codex-plugin/plugin.json", "run.py", "doctor.py", "memory_manager/store.py", "memory_manager/app.py", "memory_manager/diagnostics.py", "web/index.html", "web/app.js", "web/style.css", "skills/memory-manager/SKILL.md", "skills/memory-manager/agents/openai.yaml", "tests/test_store.py", "tests/test_interfaces.py", "tests/test_installer.py"]
+    required = ["mcp.json", ".mcp.json", ".codex-plugin/plugin.json", "run.py", "doctor.py", "memory_manager/store.py", "memory_manager/app.py", "memory_manager/autoload.py", "memory_manager/diagnostics.py", "web/index.html", "web/app.js", "web/style.css", "skills/memory-manager/SKILL.md", "skills/memory-manager/agents/openai.yaml", "hooks/hooks.json", "hooks/memory_context.py", "tests/test_store.py", "tests/test_interfaces.py", "tests/test_installer.py", "tests/test_autoload.py"]
     for relative in required:
         if not (source / relative).is_file():
             raise InstallError("插件文件缺失：" + relative)
-    manifest = load_json((source / "plugin.json").read_text(encoding="utf-8"), "plugin.json")
+    manifest_path = source / "plugin.json"
+    if not manifest_path.is_file():
+        manifest_path = source / ".codex-plugin" / "plugin.json"
+    manifest = load_json(manifest_path.read_text(encoding="utf-8"), "plugin manifest")
     if manifest.get("name") != PLUGIN or not isinstance(manifest.get("version"), str):
         raise InstallError("插件名称或版本无效")
     load_json((source / "mcp.json").read_text(encoding="utf-8"), "mcp.json")
+    load_json((source / "hooks" / "hooks.json").read_text(encoding="utf-8"), "hooks.json")
     compatibility = load_json((source / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"), "compatibility plugin.json")
     if compatibility.get("name") != manifest["name"] or compatibility.get("version") != manifest["version"]:
         raise InstallError("兼容声明与插件名称或版本不一致")
@@ -276,9 +310,10 @@ def stage_plugin(source, data_dir):
     temporary = Path(tempfile.mkdtemp(prefix=PLUGIN + ".staging-", dir=plugins))
     backup = None
     try:
-        copy_payload(source, temporary)
+        copy_codex_payload(source, temporary)
         atomic_write_json(temporary / "mcp.json", build_mcp(sys.executable, data_dir))
         atomic_write_json(temporary / ".mcp.json", build_legacy_mcp(sys.executable, data_dir))
+        atomic_write_json(temporary / "hooks" / "hooks.json", build_hooks(sys.executable, data_dir))
         changed = not destination.is_dir() or payload_digest(destination) != payload_digest(temporary)
         if changed:
             if destination.exists():

@@ -1,6 +1,6 @@
 @echo off
 setlocal
-echo Codex Memory Manager Installer 0.2.1
+echo Codex Memory Manager Installer 0.2.2
 where py >nul 2>nul
 if not errorlevel 1 goto use_py
 where python >nul 2>nul

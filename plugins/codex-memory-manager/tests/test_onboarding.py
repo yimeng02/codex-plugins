@@ -120,7 +120,7 @@ class OnboardingTests(unittest.TestCase):
         self.assertEqual(Path(preview["path"]), override)
         self.setup("apply", confirmed=True, expected_sha256=preview["sha256"], expected_path=preview["path"])
         self.assertEqual(self.path.read_text(), "base guidance")
-        self.assertTrue(override.read_text().startswith("active guidance"))
+        self.assertTrue(override.read_text(encoding="utf-8").startswith("active guidance"))
 
     def test_same_content_override_switch_rejects_the_old_preview_path(self):
         self.home.mkdir()

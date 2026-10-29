@@ -7,6 +7,14 @@ description: 管理用户自建的 Codex 规则与记忆库。当用户要求查
 
 这项技能管理自己的 SQLite 记忆库。浏览器页面、CLI 和本插件 MCP 工具访问同一数据库。
 
+## 自动读取
+
+已审核且启用的 SessionStart 钩子会直接准备启用全局记忆；UserPromptSubmit 在本聊天尚无准备记录或资料库版本变化时补充/更新。两者不依赖 MCP 服务就绪，因此问候也能获得偏好。安装插件不等于已信任钩子；钩子必须通过 Codex 的审核。不得自写 trusted_hash、冒充用户批准或使用绕过信任的参数。
+
+上下文中出现 MEMORY_MANAGER_DATA_JSON 时，以其中的 global_entries 与 revision 作为本次全局参考，替换之前由管理器提供的旧全局条目；revoked_entry_ids 不再应用。omitted_global_count 大于零表示部分内容未注入，不能声称全量已加载。其他作用域只提供 available_targets 索引，仍按本轮任务和准确匹配方式检索。
+
+可以用 memory_status(session_id="实际聊天ID") 核对准备记录；不要猜测聊天ID，也不要将 prepared_for_host 宣称为模型已遵循或其他聊天已同步。后台钩子不会写全局规则、保存对话或消费首次配置选择；首次在 Codex 中明确使用本插件的配置询问仍遵循下方步骤。
+
 ## 操作步骤
 
 首次在 **Codex 聊天中实际使用本插件** 时，先调用 `memory_status`。若 `onboarding_decision` 为 `pending` 且本聊天尚未询问，调用 `memory_setup(action="preview")`，使用返回的 `prompt` 解释用途、两种匹配方式、记忆更新后重新读取、插件版本升级以及三个选择的作用；展示规则和实际生效的全局文件路径，再询问是否加入。不要只展示一句“是否加入规则”，也不要把市场升级与记忆重新读取混为一谈。这是 Codex 中的首次使用询问，不是网页弹窗，也不是后台连接时自动写文件。

@@ -66,7 +66,8 @@ class Store:
     to enabled, non-deleted entries. Nothing reads Codex's private memory files.
     """
 
-    def __init__(self, db_path):
+    def __init__(self, db_path, *, timeout=15):
+        self._timeout = timeout
         self._keeper = None
         if str(db_path) == ":memory:":
             self.db_path = f"file:codex_memory_{uuid.uuid4().hex}?mode=memory&cache=shared"
@@ -129,10 +130,10 @@ class Store:
                 )
 
     def _connect(self):
-        conn = sqlite3.connect(self.db_path, timeout=15, uri=self._uri)
+        conn = sqlite3.connect(self.db_path, timeout=self._timeout, uri=self._uri)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
-        conn.execute("PRAGMA busy_timeout = 15000")
+        conn.execute(f"PRAGMA busy_timeout = {int(self._timeout * 1000)}")
         return conn
 
     @contextmanager

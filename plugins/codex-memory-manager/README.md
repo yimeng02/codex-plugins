@@ -1,6 +1,6 @@
 # Codex 规则与记忆管理器
 
-当前版本：**0.2.1**。保留原目标精确匹配，新增可选的插件标识匹配；提供网页记忆更新提醒和 Codex 首次使用的全局读取规则确认。安装和调用失败的排查见[客户端加载说明](docs/CLIENT_LOADING.md)。
+当前版本：**0.2.2**。为每个新聊天在首轮回复前准备全局记忆，包括问候和具体任务；资料库更新后在下一条消息刷新，按聊天记录准备版本。启用前需在 Codex 审核并信任两个钩子。
 
 一个本地优先的个人记忆管理插件，提供中文可视化页面、SQLite 持久化、stdio MCP 工具和 Codex 技能。需要 Python 3.10+，无需安装第三方 Python 包、数据库或前端依赖。
 
@@ -22,6 +22,12 @@ codex plugin marketplace add yimeng02/codex-plugins --ref main
 ```
 
 更新、私有仓库认证及原本地来源迁移见 [GitHub 个人市场说明](docs/GITHUB-MARKETPLACE.md)。本机安装脚本及参数见 [安装说明](docs/INSTALL.md)，版本变更见 [更新记录](CHANGELOG.md)。
+
+## 自动读取全局记忆
+
+更新插件后，按 Codex 的钩子审核提示信任本插件的 `SessionStart` 与 `UserPromptSubmit`。启动、恢复、清空、压缩或派生聊天时自动准备全局启用记忆；后续消息仅在资料库版本变化时刷新。这样“你好”也能获得全局偏好，不需要模型先调用 MCP。未审核的钩子不会执行。
+
+每个聊天有独立的准备记录，可用 `memory_status(session_id="聊天ID")` 核对；准备记录不等于模型已经遵循。读取失败会提示，原聊天仍可继续。详见 [0.2.2 修复说明](docs/RELEASE-0.2.2.md)。
 
 ## 首次在 Codex 使用与记忆更新
 
@@ -125,9 +131,9 @@ Windows 与 WSL 的 Codex 配置可能不同；请在目标客户端对应的环
 
 以下为手动注册参考。自动安装生成的本地市场位于 `<数据目录>/marketplace`；排查自动安装时应使用该实际路径。官方参考：[Codex 插件命令](https://learn.chatgpt.com/docs/developer-commands#codex-plugin)、[构建插件](https://learn.chatgpt.com/docs/plugins/build/plugins)。
 
-已提供 portable `plugin.json`、`mcp.json`、`skills/` 和本地 marketplace 入口。本项目目录同时作为 marketplace 根目录。
+Codex 发行版提供原生 `.codex-plugin/plugin.json`、`.mcp.json`、`skills/`、`hooks/` 和本地 marketplace 入口。本项目目录同时作为 marketplace 根目录；不放置会遮蔽钩子声明的根 `plugin.json`。
 
-先确认 Codex 实际执行环境可运行 `python3`。如果 Windows 原生环境只有 `python`，可在自己的源码副本将 mcp.json 中 command 改为 `python`。portable command 不能是 Python 的绝对路径，也不能把命令与参数拼在一起；本机安装器会以裸命令加子进程 PATH 固定实际 Python。
+先确认 Codex 实际执行环境可运行 `python3`，Windows 钩子默认使用 `py -3`。Windows 推荐使用本机安装器，自动固定所选 Python、钩子命令和数据目录；手动注册时需核对 `.mcp.json` 与 `hooks/hooks.json` 的运行命令。`mcp.json` 另保留便携 MCP 声明供其他宿主使用。
 
 在安装客户端所在环境运行：
 
@@ -187,7 +193,7 @@ python3 -m unittest discover -s tests -v
 python3 package.py
 ```
 
-打包结果为 `dist/codex-memory-manager-0.2.1.zip`，排除运行数据和 Python 缓存。隔离测试覆盖 CRUD、批量事务、HTTP、MCP、宿主配置规则、数据库路径及安装器；MCP 新增插件目录、读取状态、刷新与首次配置工具；实际验证结果见本版更新记录。GitHub Actions 在 Ubuntu/Windows 与 Python 3.10/3.13 上执行相同测试。桌面新聊天是否拿到工具仍以真实调用为准。
+打包结果为 `dist/codex-memory-manager-0.2.2.zip`，排除运行数据和 Python 缓存。隔离测试覆盖 CRUD、批量事务、HTTP、MCP、宿主配置规则、数据库路径及安装器；MCP 新增插件目录、读取状态、刷新与首次配置工具；实际验证结果见本版更新记录。GitHub Actions 在 Ubuntu/Windows 与 Python 3.10/3.13 上执行相同测试。桌面新聊天是否拿到工具仍以真实调用为准。
 
 ## 参考依据
 

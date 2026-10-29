@@ -1,9 +1,0 @@
-{
-  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
-  "name": "codex-memory-manager",
-  "version": "0.2.1",
-  "repository": "https://github.com/yimeng02/codex-plugins",
-  "homepage": "https://github.com/yimeng02/codex-plugins",
-  "author": {"name": "yimeng02"},
-  "description": "本地可视化分类记忆管理：自定义分类、条目编辑、批量操作、版本恢复、导入导出与 Codex 检索。"
-}

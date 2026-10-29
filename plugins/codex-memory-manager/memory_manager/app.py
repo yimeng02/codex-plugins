@@ -95,7 +95,7 @@ def tool(name, description, properties=None, required=None, read_only=False):
 
 
 TOOLS = [
-    tool("memory_status", "查看资料库版本、最近一次插件读取版本及首次配置状态；不代表所有聊天同步。", read_only=True),
+    tool("memory_status", "查看资料库版本与首次配置状态；可按session_id核对该聊天准备的全局记忆版本。准备记录不代表模型已遵循。", {"session_id": STRING}, read_only=True),
     tool("memory_plugins", "列出本机发现的插件名称与准确标识，供匹配目标选择；缓存发现不代表已启用。", read_only=True),
     tool("memory_refresh", "重新读取全局及指定任务范围的启用记忆，记录最近读取版本。其他聊天仍需各自读取。", {
         "contexts": {"type": "array", "maxItems": 10000, "items": object_schema({
@@ -181,7 +181,11 @@ def dispatch(store, name, arguments):
         raise StoreError("id 必须是字符串")
     if name == "memory_status":
         status = store.application_status()
-        return {**status, "first_use_prompt": FIRST_USE_PROMPT if status["onboarding_decision"] == "pending" else None, "refresh_prompt": REFRESH_PROMPT if status["needs_refresh"] else None, "note": "最近一次读取仅记录插件库版本，各个聊天仍需按任务读取。"}
+        result = {**status, "first_use_prompt": FIRST_USE_PROMPT if status["onboarding_decision"] == "pending" else None, "refresh_prompt": REFRESH_PROMPT if status["needs_refresh"] else None, "note": "最近一次读取仅记录插件库版本，各个聊天仍需按任务读取。"}
+        if "session_id" in arguments:
+            from .autoload import session_status
+            result["session_context"] = session_status(store, arguments["session_id"])
+        return result
     if name == "memory_plugins":
         return discover_plugins()
     if name == "memory_refresh":
@@ -456,6 +460,8 @@ def publish(store, filename, scope, target, apply=False, expected_hash=None, mat
 
 
 def main(argv=None):
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description="Codex 规则与记忆管理器")
     parser.add_argument("--db", type=Path, default=None, help="SQLite 数据库路径；UI 与 MCP 需要使用同一路径")
     commands = parser.add_subparsers(dest="command", required=True)

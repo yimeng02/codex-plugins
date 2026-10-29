@@ -7,11 +7,14 @@ import json
 
 def main():
     root = Path(__file__).resolve().parent
-    version = json.loads((root / "plugin.json").read_text(encoding="utf-8"))["version"]
+    manifest = root / "plugin.json"
+    if not manifest.is_file():
+        manifest = root / ".codex-plugin" / "plugin.json"
+    version = json.loads(manifest.read_text(encoding="utf-8"))["version"]
     output = root / "dist" / ("codex-memory-manager-" + version + ".zip")
     output.parent.mkdir(exist_ok=True)
-    included = ["plugin.json", "mcp.json", ".mcp.json", ".codex-plugin/plugin.json", "README.md", "run.py", "start.sh", "start.cmd", "install.py", "install.cmd", "install.ps1", "install.sh", "doctor.py", "doctor.cmd", "package.py", "CHANGELOG.md", ".gitignore"]
-    folders = {"memory_manager": {".py"}, "web": {".html", ".js", ".css"}, "skills": {".md", ".yaml"}, "tests": {".py"}, "docs": {".md"}}
+    included = ["mcp.json", ".mcp.json", ".codex-plugin/plugin.json", "README.md", "run.py", "start.sh", "start.cmd", "install.py", "install.cmd", "install.ps1", "install.sh", "doctor.py", "doctor.cmd", "package.py", "CHANGELOG.md", ".gitignore"]
+    folders = {"memory_manager": {".py"}, "web": {".html", ".js", ".css"}, "skills": {".md", ".yaml"}, "tests": {".py"}, "docs": {".md"}, "hooks": {".py", ".json"}}
     files = [root / name for name in included]
     for folder, extensions in folders.items():
         files.extend(path for path in (root / folder).rglob("*") if path.is_file() and not path.is_symlink() and "__pycache__" not in path.parts and path.suffix in extensions)

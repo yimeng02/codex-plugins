@@ -1,6 +1,6 @@
 {
   "name": "codex-memory-manager",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "查看、分类和编辑用户自建的规则与记忆。",
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
@@ -8,7 +8,19 @@
     "displayName": "规则与记忆管理器",
     "shortDescription": "自定义分类、批量编辑和可视化管理个人记忆",
     "category": "Productivity",
-    "capabilities": ["Read", "Write"],
-    "defaultPrompt": ["列出我的分类和记忆", "打开本地记忆管理页面"]
-  }
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "列出我的分类和记忆",
+      "打开本地记忆管理页面"
+    ]
+  },
+  "hooks": "./hooks/hooks.json",
+  "author": {
+    "name": "yimeng02"
+  },
+  "repository": "https://github.com/yimeng02/codex-plugins",
+  "homepage": "https://github.com/yimeng02/codex-plugins"
 }

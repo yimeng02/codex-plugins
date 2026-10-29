@@ -1,4 +1,4 @@
-> 最新 0.1.5：推荐从 [GitHub 个人市场](GITHUB-MARKETPLACE.md) 安装；本机安装器也已修复 portable MCP command 格式。
+> 当前 0.2.2：推荐从 [GitHub 个人市场](GITHUB-MARKETPLACE.md) 安装。新增全局记忆启动钩子，安装后需审核并信任；详见 [自动读取修复说明](RELEASE-0.2.2.md)。
 
 # 自动安装与升级
 
@@ -10,7 +10,7 @@
 - 已安装且支持 `codex plugin add` 的 Codex CLI。
 - 使用与目标 Codex 客户端一致的操作系统用户及 `CODEX_HOME`。
 
-安装器会检查依赖和插件命令，运行项目测试，并在依赖不满足或检查失败时停止。它不会下载 Python 或 Codex，不要求管理员权限，也不会整体覆写 `config.toml`。
+安装器会检查依赖和插件命令，运行项目测试，并在检查失败时停止。它不下载 Python；缺少可用 CLI 时，默认通过 OpenAI 官方安装器补齐，`--check` 与 `--no-bootstrap-cli` 可禁止下载。不要求管理员权限，也不会整体覆写 `config.toml` 或自动批准钩子信任。
 
 ## Windows
 
@@ -124,9 +124,11 @@ Windows 与 WSL 通常拥有不同的用户目录和 Codex 配置。WSL 中安�
 
 官方参考：[Codex 插件命令](https://learn.chatgpt.com/docs/developer-commands#codex-plugin)、[构建插件](https://learn.chatgpt.com/docs/plugins/build/plugins)。
 
-## 本次交付的验证状态
+## 验证与自动读取
 
-自动安装脚本与本说明为源码交付。本次编辑环境无法创建终端进程，未在该环境中运行单元测试、自动安装或客户端加载验收。脚本中包含的检查需要在可运行 Python 与 Codex CLI 的本机环境执行；不要将安装步骤说明视为已执行结果。
+安装器检查缓存中的技能、MCP 握手和只读调用；CLI 登记成功仍需在目标客户端验证。0.2.2 另通过隔离配置中的真实 Codex 宿主验证：审核测试钩子后，发送“你好”的首个模型请求已包含全局记忆，且未包含其他范围正文。测试使用本地模拟模型，不代表实际模型已遵循每条偏好。
+
+升级后完全退出并重启 Codex，按提示审核 `SessionStart` 和 `UserPromptSubmit`。CLI 可使用 `/hooks` 检查；未信任、被策略禁用或客户端不支持的钩子不会自动执行。原资料库继续使用，无需开启 Codex 内置记忆或改写全局 AGENTS。
 > **0.1.2 安装修复：** 不再要求提前把 CLI 加入 PATH。安装器会查找桌面应用和常见用户安装位置；仍无可用 CLI 时，默认运行 OpenAI 官方安装器。`--check` 与新增的 `--no-bootstrap-cli` 不下载。本文旧版“需手动安装 CLI”或“不下载 Codex”的描述由此更新，详细步骤见 [CLI 找不到的修复说明](CLI_NOT_FOUND.md)。
 
 > **0.1.3 验收更新：** CLI 的 installed/enabled 不代表桌面会话工具已加载。新版增加兼容声明与实际安装缓存的 MCP 进程自检，并提供 `doctor.cmd` 检查旧版安装。步骤见[客户端加载说明](CLIENT_LOADING.md)。

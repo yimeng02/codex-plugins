@@ -1,0 +1,33 @@
+{
+  "description": "在每个聊天启动时准备全局记忆，并在资料库更新后刷新；不访问历史聊天文件，不保存提示词。",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${PLUGIN_ROOT}/hooks/memory_context.py\"",
+            "commandWindows": "py -3 \"${PLUGIN_ROOT}/hooks/memory_context.py\"",
+            "timeout": 5,
+            "additionalContextLimit": 0,
+            "statusMessage": "加载全局记忆"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${PLUGIN_ROOT}/hooks/memory_context.py\"",
+            "commandWindows": "py -3 \"${PLUGIN_ROOT}/hooks/memory_context.py\"",
+            "timeout": 5,
+            "additionalContextLimit": 0,
+            "statusMessage": "检查记忆更新"
+          }
+        ]
+      }
+    ]
+  }
+}
