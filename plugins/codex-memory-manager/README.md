@@ -1,6 +1,6 @@
 # Codex 规则与记忆管理器
 
-当前版本：**0.1.5**。支持从 GitHub 个人市场安装，修复本机安装器生成绝对 MCP command、被 Codex 拒绝的问题，并在握手前检查宿主配置规则。安装和调用失败的排查见[客户端加载说明](docs/CLIENT_LOADING.md)。
+当前版本：**0.2.0**。新增插件标识选择、网页记忆更新提醒，以及 Codex 首次使用时的全局读取规则确认。安装和调用失败的排查见[客户端加载说明](docs/CLIENT_LOADING.md)。
 
 一个本地优先的个人记忆管理插件，提供中文可视化页面、SQLite 持久化、stdio MCP 工具和 Codex 技能。需要 Python 3.10+，无需安装第三方 Python 包、数据库或前端依赖。
 
@@ -22,6 +22,24 @@ codex plugin marketplace add yimeng02/codex-plugins --ref main
 ```
 
 更新、私有仓库认证及原本地来源迁移见 [GitHub 个人市场说明](docs/GITHUB-MARKETPLACE.md)。本机安装脚本及参数见 [安装说明](docs/INSTALL.md)，版本变更见 [更新记录](CHANGELOG.md)。
+
+## 首次在 Codex 使用与记忆更新
+
+首次在 Codex 聊天中实际使用 memory-manager 时，会先查看首次配置状态，展示以下规则并询问是否加入生效的全局 AGENTS 文件：
+
+```text
+开始任务时，使用 memory-manager 读取全局启用记忆；
+涉及具体项目、技能或插件时，按准确作用域和目标检索相关记忆。
+仅应用与当前任务相关的内容；工具不可用时如实说明。
+```
+
+确认加入后才应用，保留已有内容并备份；选择暂不加入或稍后也会记录，后续不自动反复询问。后台连接插件不会自动写入，全局 override 存在时会在预览中说明实际生效的目标。网页不承担首次询问。
+
+编辑插件范围的记忆时，可从“插件标识”选择框选择本机发现的插件，保存准确 ID；未在列表中的插件可手动填写。旧条目的显示名目标保留，选择规范标识并保存后才会更改。
+
+网页顶部显示库版本和最近一次通过插件读取的版本。保存后如有更新，点击“复制重新读取指令”，在需要使用的 Codex 聊天中发送；插件以 `memory_refresh` 读取全局及当前任务指定范围，随后网页自动更新状态。复制不算读取，最近一次读取也不代表所有聊天同步。
+
+详细步骤见 [0.2.0 使用与更新说明](docs/RELEASE-0.2.0.md)。
 
 ## 已实现的功能
 
@@ -169,7 +187,7 @@ python3 -m unittest discover -s tests -v
 python3 package.py
 ```
 
-打包结果为 `dist/codex-memory-manager-0.1.5.zip`，排除运行数据和 Python 缓存。73 项隔离测试已通过，覆盖 CRUD、批量事务、HTTP、MCP、宿主配置规则、数据库路径及安装器；实际 Codex 0.162.0-alpha.17.2 宿主已发现全部 14 个 MCP 工具。GitHub Actions 在 Ubuntu/Windows 与 Python 3.10/3.13 上执行相同测试。桌面新聊天是否拿到工具仍以真实调用为准。
+打包结果为 `dist/codex-memory-manager-0.2.0.zip`，排除运行数据和 Python 缓存。隔离测试覆盖 CRUD、批量事务、HTTP、MCP、宿主配置规则、数据库路径及安装器；MCP 新增插件目录、读取状态、刷新与首次配置工具；实际验证结果见本版更新记录。GitHub Actions 在 Ubuntu/Windows 与 Python 3.10/3.13 上执行相同测试。桌面新聊天是否拿到工具仍以真实调用为准。
 
 ## 参考依据
 

@@ -12,7 +12,7 @@ import uuid
 from . import __version__
 
 
-REQUIRED_TOOLS = {"memory_snapshot", "memory_search", "memory_create", "memory_update", "memory_bulk"}
+REQUIRED_TOOLS = {"memory_snapshot", "memory_search", "memory_create", "memory_update", "memory_bulk", "memory_status", "memory_plugins", "memory_refresh", "memory_setup"}
 MCP_SCHEMA = "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json"
 
 

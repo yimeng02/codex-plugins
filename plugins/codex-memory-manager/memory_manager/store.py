@@ -241,7 +241,88 @@ class Store:
                 "categories": list(self._categories(conn).values()),
                 "entries": [self._entry(row) for row in conn.execute("SELECT * FROM entries ORDER BY priority DESC,updated_at DESC,id")],
                 "revision": int(conn.execute("SELECT value FROM metadata WHERE key='revision'").fetchone()[0]),
+                "application": self._application_status(conn),
             }
+
+    @staticmethod
+    def _application_status(conn):
+        metadata = {row["key"]: row["value"] for row in conn.execute(
+            "SELECT key,value FROM metadata WHERE key IN "
+            "('revision','last_read_revision','last_read_at','onboarding_decision')"
+        )}
+        revision = int(metadata["revision"])
+        last_read = metadata.get("last_read_revision")
+        last_read = int(last_read) if last_read is not None else None
+        return {
+            "revision": revision,
+            "last_read_revision": last_read,
+            "last_read_at": metadata.get("last_read_at"),
+            "needs_refresh": revision > 0 and (last_read is None or last_read < revision),
+            "onboarding_decision": metadata.get("onboarding_decision", "pending"),
+        }
+
+    def application_status(self):
+        """Report the latest explicit plugin read, not every chat's state."""
+        with self._transaction() as conn:
+            return self._application_status(conn)
+
+    def refresh(self, contexts=None):
+        """Read relevant enabled memories and acknowledge this database revision.
+
+        Global memories are always included; other scopes require an exact
+        scope/target pair. Validation, the read, and its receipt are atomic so a
+        concurrent edit cannot be incorrectly acknowledged as already read.
+        """
+        contexts = [] if contexts is None else contexts
+        if not isinstance(contexts, list) or len(contexts) > MAX_ENTRIES:
+            raise StoreError("contexts 必须是最多 10000 项的对象数组")
+        selected_contexts = set()
+        for context in contexts:
+            _object(context, "context")
+            if set(context) != {"scope", "target"}:
+                raise StoreError("context 必须仅包含 scope 和 target")
+            scope = context["scope"]
+            if not isinstance(scope, str) or scope not in SCOPES - {"global"}:
+                raise StoreError("context scope 必须是 project、skill 或 plugin")
+            target = _text(context["target"], "context target", limit=4096)
+            selected_contexts.add((scope, target))
+        with self._transaction() as conn:
+            entries = []
+            for row in conn.execute(
+                "SELECT * FROM entries WHERE enabled=1 AND deleted=0 "
+                "ORDER BY priority DESC,updated_at DESC,id"
+            ):
+                if row["scope"] == "global" or (row["scope"], row["target"]) in selected_contexts:
+                    entries.append(self._entry(row))
+            available_targets = [dict(row) for row in conn.execute(
+                "SELECT scope,target,COUNT(*) AS count FROM entries "
+                "WHERE enabled=1 AND deleted=0 AND scope!='global' "
+                "GROUP BY scope,target ORDER BY scope,target"
+            )]
+            revision = int(conn.execute("SELECT value FROM metadata WHERE key='revision'").fetchone()[0])
+            conn.executemany(
+                "INSERT INTO metadata(key,value) VALUES (?,?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                [("last_read_revision", str(revision)), ("last_read_at", _now())],
+            )
+            return {
+                "entries": entries,
+                "revision": revision,
+                "available_targets": available_targets,
+                "application": self._application_status(conn),
+                "note": "仅记录本次插件已读取的记忆库版本；不代表所有 Codex 聊天已自动应用。其他聊天需要重新读取相关记忆。",
+            }
+
+    def set_onboarding_decision(self, decision):
+        """Remember a user decision without changing memories or their revision."""
+        if not isinstance(decision, str) or decision not in {"configured", "declined", "deferred"}:
+            raise StoreError("decision 必须是 configured、declined 或 deferred")
+        with self._transaction() as conn:
+            conn.execute(
+                "INSERT INTO metadata(key,value) VALUES ('onboarding_decision',?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value", (decision,),
+            )
+            return self._application_status(conn)
 
     def category_create(self, data):
         _object(data, "分类")

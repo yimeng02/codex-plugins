@@ -7,7 +7,10 @@ const model = {
   editingId: null, draft: false, dirty: false, busy: false, loaded: false,
   categoryEditingId: null, history: [], historyEntryId: null, historyVersion: null,
   markdown: '', markdownScope: 'global',
+  plugins: [], pluginsAvailable: false, application: null, statusAvailable: false, statusPolling: false,
 };
+
+const refreshCommand = '使用 codex-memory-manager:memory-manager，调用 memory_refresh，重新读取全局启用记忆，并按本任务的项目路径、技能标识和插件标识精确检索相关启用记忆。在当前聊天应用相关规则，并说明实际读取的资料库版本。其他聊天需要各自重新读取。';
 
 function node(tag, className, text) {
   const result = document.createElement(tag);
@@ -53,6 +56,104 @@ function reportError(error) {
 async function run(action) {
   try { await action(); }
   catch (error) { reportError(error); }
+}
+
+function revisionLabel(value) {
+  return Number.isInteger(value) && value >= 0 ? `r${value}` : '—';
+}
+
+function applyApplicationStatus(status) {
+  if (!status || !Number.isInteger(status.revision) || status.revision < 0 ||
+      !(status.last_read_revision === null || (Number.isInteger(status.last_read_revision) && status.last_read_revision >= 0))) {
+    model.statusAvailable = false;
+  } else {
+    model.application = status;
+    model.statusAvailable = true;
+  }
+  renderApplicationStatus();
+}
+
+function renderApplicationStatus() {
+  const status = model.application;
+  const panel = $('application-status');
+  panel.classList.remove('needs-refresh', 'status-unknown');
+  if (!model.statusAvailable || !status) {
+    panel.classList.add('status-unknown');
+    $('application-status-title').textContent = '暂时无法确认 Codex 的记忆读取状态';
+    $('application-status-description').textContent = '资料库管理仍可使用。请在需要使用记忆的 Codex 聊天中调用插件重新读取；复制指令不会标记为已读取。';
+    $('application-version').textContent = status ? `上次检查：资料库 ${revisionLabel(status.revision)} · 最近一次插件读取 ${revisionLabel(status.last_read_revision)}` : `资料库版本：${revisionLabel(model.revision)} · 最近一次插件读取：未知`;
+  } else {
+    const needsRefresh = status.needs_refresh === true || (status.revision > 0 && (status.last_read_revision === null || status.revision > status.last_read_revision));
+    panel.classList.toggle('needs-refresh', needsRefresh);
+    $('application-status-title').textContent = needsRefresh ? '记忆有更新，请在需要使用的 Codex 聊天中调用本插件重新读取' : status.last_read_revision === null ? '尚未通过插件读取记忆' : '最近一次插件读取已到当前资料库版本';
+    $('application-status-description').textContent = needsRefresh ? '网页保存不会更新聊天中已读取的内容。请重新读取全局及本任务相关范围；复制指令不会清除此提示。' : status.last_read_revision === null ? '当前资料库还没有记忆更新。新增记忆后，请在需要使用的 Codex 聊天中调用本插件读取。' : '这是最近一次插件读取的记录，不代表所有聊天已更新。其他聊天需要各自重新读取。';
+    $('application-version').textContent = `资料库版本：${revisionLabel(status.revision)} · 最近一次插件读取：${status.last_read_revision === null ? '尚未读取' : revisionLabel(status.last_read_revision)}${status.last_read_at ? ` · ${dateTime(status.last_read_at)}` : ''}`;
+  }
+}
+
+async function pollApplicationStatus() {
+  if (model.statusPolling) return;
+  model.statusPolling = true;
+  try { applyApplicationStatus(await api('/api/status')); }
+  catch {
+    model.statusAvailable = false;
+    renderApplicationStatus();
+  } finally { model.statusPolling = false; }
+}
+
+async function copyCommand(command, message) {
+  try {
+    if (!navigator.clipboard?.writeText) throw new Error('clipboard unavailable');
+    await navigator.clipboard.writeText(command);
+    notice(message);
+  } catch {
+    $('command-preview').value = command;
+    $('command-dialog').showModal();
+    $('command-preview').focus();
+    $('command-preview').select();
+  }
+}
+
+function fillPluginSelect(kind) {
+  const select = $(`${kind}-plugin`);
+  const fragment = document.createDocumentFragment();
+  const manual = node('option', '', '手动输入插件标识…');
+  manual.value = '';
+  fragment.append(manual);
+  model.plugins.forEach((plugin) => {
+    const option = node('option', '', plugin.display_name && plugin.display_name !== plugin.id ? `${plugin.display_name} · ${plugin.id}` : plugin.id);
+    option.value = plugin.id;
+    fragment.append(option);
+  });
+  select.replaceChildren(fragment);
+  const target = $(`${kind}-target`).value.trim();
+  select.value = model.plugins.some((plugin) => plugin.id === target) ? target : '';
+  $(`${kind}-plugin-hint`).textContent = model.pluginsAvailable ? '列表来自本机插件缓存；选择后使用准确标识，也可手动填写未安装的插件标识。' : '暂时无法读取本机插件列表，可在关联目标中手动填写准确插件标识。';
+}
+
+function matchingHint(scope, target) {
+  if (scope === 'global') return '全局记忆无需填写目标。';
+  if (scope !== 'plugin') return `请填写${scope === 'project' ? '完整项目路径' : '准确 Skill 标识'}；读取和导出时按关联目标精确匹配。`;
+  const known = model.plugins.find((plugin) => plugin.id === target);
+  if (!target || known) return '请使用准确插件标识，例如 android-engineering-ops；读取和导出时按标识精确匹配。';
+  const byName = model.plugins.find((plugin) => plugin.display_name === target);
+  return byName ? `当前目标是显示名称；可选择 ${byName.id} 作为准确标识。原值会保留，直到你修改并保存。` : '当前目标不在本机插件列表中，原值已保留。请确认它是准确标识，或从列表选择后保存。';
+}
+
+async function loadPlugins() {
+  try {
+    const result = await api('/api/plugins');
+    if (!Array.isArray(result?.plugins)) throw new Error('invalid plugin list');
+    const seen = new Set();
+    model.plugins = result.plugins.filter((plugin) => {
+      if (!plugin || typeof plugin.id !== 'string' || !plugin.id.trim() || seen.has(plugin.id)) return false;
+      seen.add(plugin.id);
+      return true;
+    }).map((plugin) => ({ id: plugin.id, display_name: typeof plugin.display_name === 'string' ? plugin.display_name : plugin.id }));
+    model.pluginsAvailable = true;
+  } catch { model.pluginsAvailable = false; }
+  targetHint();
+  renderTargetHint(false);
 }
 
 async function mutate(action) {
@@ -246,6 +347,8 @@ async function refresh() {
   model.categories = state.categories;
   model.entries = state.entries;
   model.revision = state.revision;
+  if (state.application) applyApplicationStatus(state.application);
+  else await pollApplicationStatus();
   model.loaded = true;
   if (!['all', 'trash'].includes(model.category) && !model.categories.some((category) => category.id === model.category)) model.category = 'all';
   fillCategorySelect($('bulk-category'), '移动到分类…');
@@ -271,7 +374,11 @@ function targetHint() {
   const global = scope === 'global';
   $('entry-target').disabled = global || isDeleted(currentEntry() || {});
   $('entry-target').required = !global;
-  $('target-hint').textContent = global ? '全局记忆无需填写目标。' : `请填写${scope === 'project' ? '项目路径' : scope === 'skill' ? 'Skill 名称' : '插件名称'}；导出时按关联目标精确匹配。`;
+  $('entry-plugin-picker').hidden = scope !== 'plugin';
+  fillPluginSelect('entry');
+  $('entry-plugin').disabled = isDeleted(currentEntry() || {});
+  $('target-hint').textContent = matchingHint(scope, $('entry-target').value.trim());
+  $('entry-target').placeholder = scope === 'plugin' ? '例如：android-engineering-ops' : scope === 'skill' ? '例如：android-engineering-ops:android-patch-capture' : '完整项目路径';
 }
 
 function openEntry(entry, force = false) {
@@ -445,12 +552,17 @@ function importJSON(event) {
   });
 }
 
-function renderTargetHint() {
-  const global = $('render-scope').value === 'global';
+function renderTargetHint(clearPreview = true) {
+  const scope = $('render-scope').value;
+  const global = scope === 'global';
   $('render-target').disabled = global;
   $('render-target').required = !global;
   if (global) $('render-target').value = '';
-  invalidatePreview();
+  $('render-plugin-picker').hidden = scope !== 'plugin';
+  fillPluginSelect('render');
+  $('render-target-hint').textContent = matchingHint(scope, $('render-target').value.trim());
+  $('render-target').placeholder = scope === 'plugin' ? '例如：android-engineering-ops' : scope === 'skill' ? '准确 Skill 标识' : '完整项目路径';
+  if (clearPreview) invalidatePreview();
 }
 
 function invalidatePreview() {
@@ -549,6 +661,17 @@ $('editor-form').addEventListener('change', (event) => {
   if (event.target.matches('input, textarea, select')) setDirty(true);
 });
 $('entry-scope').addEventListener('change', targetHint);
+$('entry-target').addEventListener('input', targetHint);
+$('entry-plugin').addEventListener('change', () => {
+  if ($('entry-plugin').value) {
+    $('entry-target').value = $('entry-plugin').value;
+    targetHint();
+  } else {
+    $('target-hint').textContent = '请在关联目标中手动填写准确插件标识，读取和导出时精确匹配。';
+    $('entry-target').focus();
+  }
+  setDirty(true);
+});
 ['search', 'scope-filter', 'status-filter'].forEach((id) => $(id).addEventListener(id === 'search' ? 'input' : 'change', () => { model.selected.clear(); renderList(); }));
 $('select-all').addEventListener('change', () => { model.selected = new Set($('select-all').checked ? visibleEntries().map((entry) => entry.id) : []); renderSelection(); });
 $('clear-selection').addEventListener('click', () => { model.selected.clear(); renderSelection(); });
@@ -563,8 +686,18 @@ $('export-button').addEventListener('click', exportJSON);
 $('import-button').addEventListener('click', () => $('import-file').click());
 $('import-file').addEventListener('change', importJSON);
 $('render-button').addEventListener('click', openRender);
-$('render-scope').addEventListener('change', renderTargetHint);
-$('render-target').addEventListener('input', invalidatePreview);
+$('render-scope').addEventListener('change', () => renderTargetHint());
+$('render-target').addEventListener('input', () => renderTargetHint());
+$('render-plugin').addEventListener('change', () => {
+  if ($('render-plugin').value) {
+    $('render-target').value = $('render-plugin').value;
+    renderTargetHint();
+  } else {
+    $('render-target-hint').textContent = '请在关联目标中手动填写准确插件标识，读取和导出时精确匹配。';
+    invalidatePreview();
+    $('render-target').focus();
+  }
+});
 $('render-form').addEventListener('submit', renderMarkdown);
 $('download-markdown').addEventListener('click', () => download(model.markdown, model.markdownScope === 'skill' ? 'SKILL.rules.md' : 'AGENTS.rules.md', 'text/markdown;charset=utf-8'));
 $('copy-markdown').addEventListener('click', () => run(async () => {
@@ -578,6 +711,7 @@ $('copy-markdown').addEventListener('click', () => run(async () => {
 }));
 $('history-button').addEventListener('click', showHistory);
 $('restore-version').addEventListener('click', restoreVersion);
+$('copy-refresh-command').addEventListener('click', () => copyCommand(refreshCommand, '重新读取指令已复制，请粘贴到需要使用记忆的 Codex 聊天中；读取状态尚未改变。'));
 document.querySelectorAll('[data-close-dialog]').forEach((button) => button.addEventListener('click', () => $(button.dataset.closeDialog).close()));
 document.querySelectorAll('dialog').forEach((dialog) => dialog.addEventListener('close', () => dialog.querySelector('.dialog-notice')?.remove()));
 window.addEventListener('beforeunload', (event) => {
@@ -587,7 +721,7 @@ window.addEventListener('beforeunload', (event) => {
 });
 
 run(async () => {
-  try { await refresh(); }
+  try { await Promise.all([refresh(), loadPlugins()]); }
   catch (error) {
     $('storage-status').textContent = '连接失败，请检查本地服务';
     $('result-summary').textContent = '资料库尚未加载';
@@ -598,3 +732,5 @@ run(async () => {
     throw error;
   }
 });
+
+setInterval(pollApplicationStatus, 10000);
