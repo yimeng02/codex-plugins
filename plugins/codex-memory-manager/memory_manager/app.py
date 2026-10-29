@@ -22,23 +22,32 @@ END = "<!-- codex-memory-manager:end -->"
 
 
 def default_memory_home():
-    # Prefer an explicit choice, then keep any existing user-level database.
+    # An explicit data location always wins, including a not-yet-created one.
     location = os.environ.get("CODEX_MEMORY_HOME")
     if location:
         return Path(location).expanduser()
     directory = Path.home() / ".codex-memory-manager"
-    if (directory / "memory.sqlite3").is_file():
-        return directory
 
-    # A WSL host can share the Windows CODEX_HOME. Reuse only its existing
-    # sibling database, using the host-native path that was explicitly set.
+    # Preserve the data associated with a shared Codex profile. MCP hosts can
+    # filter parent environment variables, so an installed cache path supplies
+    # the profile only when its complete, fixed directory layout matches.
     codex_home = os.environ.get("CODEX_HOME")
-    if codex_home:
-        codex_directory = Path(codex_home).expanduser()
-        if codex_directory.is_absolute():
-            sibling = codex_directory.parent / ".codex-memory-manager"
-            if (sibling / "memory.sqlite3").is_file():
-                return sibling
+    codex_directory = Path(codex_home).expanduser() if codex_home else None
+    if codex_directory is None:
+        plugin_directory = ROOT.parent
+        marketplace_directory = plugin_directory.parent
+        cache_directory = marketplace_directory.parent
+        if (
+            ROOT.is_absolute()
+            and plugin_directory.name == "codex-memory-manager"
+            and cache_directory.name == "cache"
+            and cache_directory.parent.name == "plugins"
+        ):
+            codex_directory = cache_directory.parent.parent
+    if codex_directory is not None and codex_directory.is_absolute():
+        sibling = codex_directory.parent / ".codex-memory-manager"
+        if (sibling / "memory.sqlite3").is_file():
+            return sibling
     return directory
 
 

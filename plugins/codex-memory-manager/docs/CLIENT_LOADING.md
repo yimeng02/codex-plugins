@@ -1,6 +1,6 @@
 # 已安装但客户端看不到或无法调用
 
-## 已定位的问题与 0.1.4 修复
+## 已定位的问题与 0.1.5 修复
 
 旧安装器将当前 Python 的绝对路径写入 portable `mcp.json` 的 `command`。Codex portable parser 只接受裸命令名或插件包内 `./` 路径，因此可能发现 Skill，却拒绝 MCP 服务。0.1.3 的 subprocess 自检直接执行绝对 Python，遗漏了宿主配置格式校验；握手成功不能排除宿主拒绝配置。
 
@@ -11,7 +11,7 @@ Windows 安装器登记的本机市场路径不能直接当作 WSL 路径使用�
 - 本机安装器用裸 Python 命令加子进程 PATH，固定运行时；兼容格式独立保留绝对 Python。
 - 诊断先检查 portable schema、字段、command、cwd、路径边界和保留环境变量，再做 initialize、tools/list 和 memory_search 只读调用。
 - GitHub 源码使用裸 `python3`、`${PLUGIN_ROOT}/run.py` 和 `${PLUGIN_ROOT}` cwd，不包含作者机器的 Python 路径。
-- 显式数据目录优先；当前用户默认库不存在时，复用 CODEX_HOME 父目录中已有的 `.codex-memory-manager/memory.sqlite3`，不复制或迁移数据库。
+- 显式数据目录优先；其次复用 CODEX_HOME 父目录中已有的 `.codex-memory-manager/memory.sqlite3`。MCP 未继承该环境变量时，从标准插件缓存位置确定所属配置目录；否则回退到用户默认库。不复制或迁移数据库。
 
 配置问题已在源码和当前 CLI 中复现。具体桌面会话还有没有其他加载错误，仍以客户端日志及实际工具调用为准。
 
@@ -37,7 +37,7 @@ Linux/WSL/macOS 使用 `python3 doctor.py`。从 GitHub 安装时，原回执可
 
 ## 验收结果与范围
 
-- 0.1.4 的 69 项隔离测试通过，包括 portable/legacy 实际 MCP 查询。
+- 0.1.5 的 73 项隔离测试通过，包括 portable/legacy 实际 MCP 查询。
 - 实际 Codex CLI 0.162.0-alpha.17.2 的 app-server 在临时配置与数据库中成功加载插件，`mcpServerStatus/list` 发现全部 14 个工具，包含 `memory_snapshot` 与 `memory_search`，`toolsError` 为 null。
 - 这证明当前 Codex 宿主能解析并启动修复后的配置。现有桌面聊天的工具列表不会因源码提交自动刷新，还需在加载新版插件的新聊天中确认实际调用。
 

@@ -1,5 +1,11 @@
 # 更新记录
 
+## 0.1.5 — 2026-10-29
+
+- 修正 Windows 测试中短路径别名与路径分隔符的断言，保留真实宿主的占位符展开行为。
+- 原数据目录可从当前 CODEX_HOME 或标准插件安装缓存位置推导，避免 MCP 子进程未继承自定义环境时打开另一套默认库。显式 CODEX_MEMORY_HOME 仍最高优先级。
+- 本插件迁入 GitHub 的 Yimeng02 市场；保留独立原记忆库及其内容。
+
 ## 0.1.4 — 2026-10-29
 
 - 提供 GitHub 个人市场来源 `yimeng02/codex-plugins`，沿用仓库既有的 `yimeng02` 市场和 `plugins/` 布局；本机安装器仍保留独立 `personal-memory-tools` 入口。

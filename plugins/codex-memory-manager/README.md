@@ -1,6 +1,6 @@
 # Codex 规则与记忆管理器
 
-当前版本：**0.1.4**。支持从 GitHub 个人市场安装，修复本机安装器生成绝对 MCP command、被 Codex 拒绝的问题，并在握手前检查宿主配置规则。安装和调用失败的排查见[客户端加载说明](docs/CLIENT_LOADING.md)。
+当前版本：**0.1.5**。支持从 GitHub 个人市场安装，修复本机安装器生成绝对 MCP command、被 Codex 拒绝的问题，并在握手前检查宿主配置规则。安装和调用失败的排查见[客户端加载说明](docs/CLIENT_LOADING.md)。
 
 一个本地优先的个人记忆管理插件，提供中文可视化页面、SQLite 持久化、stdio MCP 工具和 Codex 技能。需要 Python 3.10+，无需安装第三方 Python 包、数据库或前端依赖。
 
@@ -52,7 +52,7 @@ Windows 原生环境可双击 `start.cmd`，或运行 `py -3 run.py serve`。Lin
 
 默认数据库：当前 Python 用户主目录下 `.codex-memory-manager/memory.sqlite3`。此位置独立于插件安装缓存，因此重新安装或更新源码不会覆盖数据库。
 
-显式 `CODEX_MEMORY_HOME` 优先。未指定时，如果当前用户默认库不存在，但 `CODEX_HOME` 父目录已有 `.codex-memory-manager/memory.sqlite3`，自动复用这个现有库。例如 WSL 使用 Windows Codex 配置时，可沿用同一 Windows 记忆库；已有的用户默认库仍优先，不移动或复制数据库。
+显式 `CODEX_MEMORY_HOME` 优先。未指定时，优先复用 `CODEX_HOME` 父目录中已有的 `.codex-memory-manager/memory.sqlite3`；MCP 子进程未继承 `CODEX_HOME` 时，从标准安装缓存位置确定所属 Codex 配置目录。否则使用当前用户默认库。这样 WSL 与 Windows 使用同一 Codex 配置时可以沿用旧记忆，不移动或复制数据库。
 
 自定义数据库时，在子命令之前指定 --db：
 
@@ -169,7 +169,7 @@ python3 -m unittest discover -s tests -v
 python3 package.py
 ```
 
-打包结果为 `dist/codex-memory-manager-0.1.4.zip`，排除运行数据和 Python 缓存。69 项隔离测试已通过，覆盖 CRUD、批量事务、HTTP、MCP、宿主配置规则、数据库路径及安装器；实际 Codex 0.162.0-alpha.17.2 宿主已发现全部 14 个 MCP 工具。GitHub Actions 在 Ubuntu/Windows 与 Python 3.10/3.13 上执行相同测试。桌面新聊天是否拿到工具仍以真实调用为准。
+打包结果为 `dist/codex-memory-manager-0.1.5.zip`，排除运行数据和 Python 缓存。73 项隔离测试已通过，覆盖 CRUD、批量事务、HTTP、MCP、宿主配置规则、数据库路径及安装器；实际 Codex 0.162.0-alpha.17.2 宿主已发现全部 14 个 MCP 工具。GitHub Actions 在 Ubuntu/Windows 与 Python 3.10/3.13 上执行相同测试。桌面新聊天是否拿到工具仍以真实调用为准。
 
 ## 参考依据
 

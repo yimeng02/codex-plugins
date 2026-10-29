@@ -1,4 +1,4 @@
-> 最新 0.1.4：推荐从 [GitHub 个人市场](GITHUB-MARKETPLACE.md) 安装；本机安装器也已修复 portable MCP command 格式。
+> 最新 0.1.5：推荐从 [GitHub 个人市场](GITHUB-MARKETPLACE.md) 安装；本机安装器也已修复 portable MCP command 格式。
 
 # 自动安装与升级
 

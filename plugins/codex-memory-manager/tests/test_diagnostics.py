@@ -21,7 +21,8 @@ class DiagnosticTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
-        self.root = Path(self.directory.name)
+        # Windows temporary paths can use an 8.3 alias; the loader canonicalizes it.
+        self.root = Path(self.directory.name).resolve()
 
     def replies(self):
         return [
@@ -82,10 +83,10 @@ class DiagnosticTests(unittest.TestCase):
     def test_portable_bare_command_and_root_placeholders(self):
         self.write_config({"env": {"MY_PLUGIN_PATH": "${PLUGIN_ROOT}/assets"}})
         command, cwd, environment = launch_spec(self.root)
-        self.assertEqual(command, [Path(sys.executable).name, str(self.root / "run.py"), "mcp"])
+        self.assertEqual(command, [Path(sys.executable).name, str(self.root) + "/run.py", "mcp"])
         self.assertEqual(cwd, str(self.root))
         self.assertEqual(environment["PLUGIN_ROOT"], str(self.root))
-        self.assertEqual(environment["MY_PLUGIN_PATH"], str(self.root / "assets"))
+        self.assertEqual(environment["MY_PLUGIN_PATH"], str(self.root) + "/assets")
 
     def test_portable_omitted_cwd_defaults_to_package(self):
         config = self.write_config()
@@ -132,7 +133,7 @@ class DiagnosticTests(unittest.TestCase):
         data = self.root / "plugin-data"
         data.mkdir()
         command, cwd, environment = launch_spec(self.root, plugin_data_root=data)
-        self.assertEqual(command[-1], str(data / "scratch"))
+        self.assertEqual(command[-1], str(data) + "/scratch")
         self.assertEqual(cwd, str(data))
         self.assertEqual(environment["PLUGIN_DATA"], str(data))
 
