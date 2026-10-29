@@ -10,7 +10,7 @@ const model = {
   plugins: [], pluginsAvailable: false, application: null, statusAvailable: false, statusPolling: false,
 };
 
-const refreshCommand = '使用 codex-memory-manager:memory-manager，调用 memory_refresh，重新读取全局启用记忆，并按本任务的项目路径、技能标识和插件标识精确检索相关启用记忆。在当前聊天应用相关规则，并说明实际读取的资料库版本。其他聊天需要各自重新读取。';
+const refreshCommand = '使用 codex-memory-manager:memory-manager，调用 memory_refresh，重新读取全局启用记忆，并根据本任务及记忆保存的匹配方式，读取相关项目、技能和插件记忆（原关联目标精确匹配或插件标识匹配）。在当前聊天应用相关规则，并说明实际读取的资料库版本。其他聊天需要各自重新读取。';
 
 function node(tag, className, text) {
   const result = document.createElement(tag);
@@ -126,18 +126,24 @@ function fillPluginSelect(kind) {
     fragment.append(option);
   });
   select.replaceChildren(fragment);
-  const target = $(`${kind}-target`).value.trim();
-  select.value = model.plugins.some((plugin) => plugin.id === target) ? target : '';
+  const pluginId = $(`${kind}-plugin-id`).value.trim();
+  select.value = model.plugins.some((plugin) => plugin.id === pluginId) ? pluginId : '';
   $(`${kind}-plugin-hint`).textContent = model.pluginsAvailable ? '列表来自本机插件缓存；选择后使用准确标识，也可手动填写未安装的插件标识。' : '暂时无法读取本机插件列表，可在关联目标中手动填写准确插件标识。';
 }
 
-function matchingHint(scope, target) {
+function matchingHint(scope) {
   if (scope === 'global') return '全局记忆无需填写目标。';
   if (scope !== 'plugin') return `请填写${scope === 'project' ? '完整项目路径' : '准确 Skill 标识'}；读取和导出时按关联目标精确匹配。`;
-  const known = model.plugins.find((plugin) => plugin.id === target);
-  if (!target || known) return '请使用准确插件标识，例如 android-engineering-ops；读取和导出时按标识精确匹配。';
-  const byName = model.plugins.find((plugin) => plugin.display_name === target);
-  return byName ? `当前目标是显示名称；可选择 ${byName.id} 作为准确标识。原值会保留，直到你修改并保存。` : '当前目标不在本机插件列表中，原值已保留。请确认它是准确标识，或从列表选择后保存。';
+  return '按填写的关联目标文本精确匹配，保留原有规则。也可切换为独立的“插件标识匹配”。';
+}
+
+function matchMode(kind) {
+  return $(`${kind}-scope`).value === 'plugin' && $(`${kind}-match-mode`).value === 'plugin_id' ? 'plugin_id' : 'exact';
+}
+
+function pluginIdHint(pluginId) {
+  if (!pluginId || model.plugins.some((plugin) => plugin.id === pluginId)) return '按准确插件标识匹配，未安装的插件也可手动填写。';
+  return '此标识不在本机缓存列表中，仍可手动使用。请确认填写的是准确插件标识。';
 }
 
 async function loadPlugins() {
@@ -310,7 +316,9 @@ function renderList() {
     if (tags.length) subtitle.append(document.createTextNode('  ·  '), node('span', 'tag-label', tags.slice(0, 2).map((tag) => `#${tag}`).join(' ')));
     titleCell.append(titleButton, subtitle);
     const scopeCell = node('td');
-    scopeCell.append(node('span', `scope-pill ${scopeNames[entry.scope] ? entry.scope : ''}`, scopeNames[entry.scope] || entry.scope || '全局'));
+    const scopePill = node('span', `scope-pill ${scopeNames[entry.scope] ? entry.scope : ''}`, scopeNames[entry.scope] || entry.scope || '全局');
+    scopePill.title = entry.match_mode === 'plugin_id' ? `插件标识匹配：${entry.plugin_id || ''}` : `原精确匹配${entry.target ? `：${entry.target}` : ''}`;
+    scopeCell.append(scopePill);
     const statusCell = node('td');
     statusCell.append(node('span', `state-pill${entry.enabled ? ' enabled' : ''}`, entry.enabled ? '已启用' : '已停用'));
     const priorityCell = node('td', 'priority-number', entry.priority ?? 50);
@@ -372,13 +380,23 @@ function setDirty(dirty) {
 function targetHint() {
   const scope = $('entry-scope').value;
   const global = scope === 'global';
-  $('entry-target').disabled = global || isDeleted(currentEntry() || {});
-  $('entry-target').required = !global;
-  $('entry-plugin-picker').hidden = scope !== 'plugin';
+  const deleted = isDeleted(currentEntry() || {});
+  if (scope !== 'plugin') $('entry-match-mode').value = 'exact';
+  const pluginMode = matchMode('entry') === 'plugin_id';
+  $('entry-match-mode').querySelector('option[value="plugin_id"]').disabled = scope !== 'plugin';
+  $('entry-match-mode').disabled = deleted;
+  $('match-mode-hint').textContent = scope === 'plugin' ? '二选一：沿用原关联目标精确匹配，或使用独立的插件标识匹配。' : '当前范围使用原精确匹配；插件标识匹配仅适用于插件范围。';
+  $('entry-target-field').hidden = pluginMode;
+  $('entry-target').disabled = global || pluginMode || deleted;
+  $('entry-target').required = !global && !pluginMode;
+  $('entry-plugin-picker').hidden = !pluginMode;
   fillPluginSelect('entry');
-  $('entry-plugin').disabled = isDeleted(currentEntry() || {});
-  $('target-hint').textContent = matchingHint(scope, $('entry-target').value.trim());
-  $('entry-target').placeholder = scope === 'plugin' ? '例如：android-engineering-ops' : scope === 'skill' ? '例如：android-engineering-ops:android-patch-capture' : '完整项目路径';
+  $('entry-plugin').disabled = !pluginMode || deleted;
+  $('entry-plugin-id').disabled = !pluginMode || deleted;
+  $('entry-plugin-id').required = pluginMode;
+  $('entry-plugin-id-hint').textContent = pluginIdHint($('entry-plugin-id').value.trim());
+  $('target-hint').textContent = matchingHint(scope);
+  $('entry-target').placeholder = scope === 'plugin' ? '原关联目标文本，例如插件显示名称' : scope === 'skill' ? '例如：android-engineering-ops:android-patch-capture' : '完整项目路径';
 }
 
 function openEntry(entry, force = false) {
@@ -393,6 +411,8 @@ function openEntry(entry, force = false) {
   $('entry-title').value = entry?.title || '';
   $('entry-content').value = entry?.content || '';
   $('entry-scope').value = entry?.scope || 'global';
+  $('entry-match-mode').value = entry?.match_mode || 'exact';
+  $('entry-plugin-id').value = entry?.plugin_id || '';
   $('entry-target').value = entry?.target || '';
   $('entry-priority').value = entry?.priority ?? 50;
   $('entry-tags').value = Array.isArray(entry?.tags) ? entry.tags.join(', ') : '';
@@ -424,10 +444,12 @@ function closeEditor(force = false) {
 }
 
 function entryPayload() {
+  const mode = matchMode('entry');
   return {
     title: $('entry-title').value.trim(), content: $('entry-content').value.trim(),
     category_id: $('entry-category').value, scope: $('entry-scope').value,
-    target: $('entry-scope').value === 'global' ? '' : $('entry-target').value.trim(),
+    match_mode: mode, plugin_id: mode === 'plugin_id' ? $('entry-plugin-id').value.trim() : '',
+    target: $('entry-scope').value === 'global' || mode === 'plugin_id' ? '' : $('entry-target').value.trim(),
     priority: Number($('entry-priority').value), enabled: $('entry-enabled').checked,
     tags: [...new Set($('entry-tags').value.split(/[,，]/).map((tag) => tag.trim()).filter(Boolean))],
   };
@@ -438,7 +460,8 @@ function saveEntry(event) {
   const payload = entryPayload();
   if (!payload.title || !payload.content) return notice('标题和规则正文不能为空。', true);
   if (!payload.category_id) return notice('请先新增分类，再保存记忆。', true);
-  if (payload.scope !== 'global' && !payload.target) return notice('请填写项目、Skill 或插件的关联目标。', true);
+  if (payload.match_mode === 'plugin_id' && !payload.plugin_id) return notice('请选择或手动填写准确插件标识。', true);
+  if (payload.match_mode === 'exact' && payload.scope !== 'global' && !payload.target) return notice('请填写项目、Skill 或插件的关联目标。', true);
   mutate(async () => {
     const previousId = model.editingId;
     const result = await api(previousId ? `/api/entries/${encodeURIComponent(previousId)}` : '/api/entries', { method: previousId ? 'PATCH' : 'POST', body: payload });
@@ -555,13 +578,20 @@ function importJSON(event) {
 function renderTargetHint(clearPreview = true) {
   const scope = $('render-scope').value;
   const global = scope === 'global';
-  $('render-target').disabled = global;
-  $('render-target').required = !global;
-  if (global) $('render-target').value = '';
-  $('render-plugin-picker').hidden = scope !== 'plugin';
+  if (scope !== 'plugin') $('render-match-mode').value = 'exact';
+  const pluginMode = matchMode('render') === 'plugin_id';
+  $('render-match-mode').querySelector('option[value="plugin_id"]').disabled = scope !== 'plugin';
+  $('render-target-field').hidden = pluginMode;
+  $('render-target').disabled = global || pluginMode;
+  $('render-target').required = !global && !pluginMode;
+  $('render-plugin-picker').hidden = !pluginMode;
   fillPluginSelect('render');
-  $('render-target-hint').textContent = matchingHint(scope, $('render-target').value.trim());
-  $('render-target').placeholder = scope === 'plugin' ? '例如：android-engineering-ops' : scope === 'skill' ? '准确 Skill 标识' : '完整项目路径';
+  $('render-plugin').disabled = !pluginMode;
+  $('render-plugin-id').disabled = !pluginMode;
+  $('render-plugin-id').required = pluginMode;
+  $('render-plugin-id-hint').textContent = pluginIdHint($('render-plugin-id').value.trim());
+  $('render-target-hint').textContent = pluginMode ? '只导出使用插件标识匹配的记忆；原精确匹配记忆请切换匹配方式后按关联目标导出。' : matchingHint(scope);
+  $('render-target').placeholder = scope === 'plugin' ? '原关联目标文本，例如插件显示名称' : scope === 'skill' ? '准确 Skill 标识' : '完整项目路径';
   if (clearPreview) invalidatePreview();
 }
 
@@ -576,22 +606,34 @@ function invalidatePreview() {
 function openRender() {
   const entry = currentEntry();
   $('render-scope').value = entry?.scope || $('scope-filter').value || 'global';
+  $('render-match-mode').value = entry?.match_mode || 'exact';
+  $('render-plugin-id').value = entry?.plugin_id || '';
   $('render-target').value = entry?.target || '';
   renderTargetHint();
   $('render-dialog').showModal();
 }
 
+function renderPayload() {
+  const scope = $('render-scope').value;
+  const mode = matchMode('render');
+  return {
+    scope, match_mode: mode,
+    target: scope === 'global' || mode === 'plugin_id' ? '' : $('render-target').value.trim(),
+    plugin_id: mode === 'plugin_id' ? $('render-plugin-id').value.trim() : '',
+  };
+}
+
 function renderMarkdown(event) {
   event.preventDefault();
   run(async () => {
-    const scope = $('render-scope').value;
-    const target = scope === 'global' ? '' : $('render-target').value.trim();
-    const result = await api('/api/render', { method: 'POST', body: { scope, target } });
-    if (scope !== $('render-scope').value || target !== (scope === 'global' ? '' : $('render-target').value.trim())) return;
+    const payload = renderPayload();
+    const { scope, target, match_mode: mode, plugin_id: pluginId } = payload;
+    const result = await api('/api/render', { method: 'POST', body: payload });
+    if (JSON.stringify(payload) !== JSON.stringify(renderPayload())) return;
     model.markdown = result.markdown || '';
     model.markdownScope = scope;
     $('render-preview').value = model.markdown;
-    $('render-summary').textContent = `${scopeNames[scope]}${target ? ` · ${target}` : ''} · ${result.count ?? 0} 条启用记忆`;
+    $('render-summary').textContent = `${scopeNames[scope]} · ${mode === 'plugin_id' ? '插件标识匹配' : '原精确匹配'}${pluginId || target ? ` · ${pluginId || target}` : ''} · ${result.count ?? 0} 条启用记忆`;
     $('copy-markdown').disabled = !model.markdown;
     $('download-markdown').disabled = !model.markdown;
   });
@@ -625,7 +667,7 @@ async function showHistory() {
         model.historyVersion = version.version_id || version.id;
         document.querySelectorAll('.history-item').forEach((item) => item.classList.toggle('active', item === button));
         const snapshot = version.entry || version.snapshot || {};
-        $('history-preview').textContent = [snapshot.title || '无标题', '', snapshot.content || '', '', `分类：${categoryName(snapshot.category_id)}`, `范围：${scopeNames[snapshot.scope] || snapshot.scope || '全局'}`, `目标：${snapshot.target || '—'}`, `标签：${Array.isArray(snapshot.tags) ? snapshot.tags.join(', ') : ''}`, `优先级：${snapshot.priority ?? 50}`, `状态：${snapshot.enabled ? '启用' : '停用'}`].join('\n');
+        $('history-preview').textContent = [snapshot.title || '无标题', '', snapshot.content || '', '', `分类：${categoryName(snapshot.category_id)}`, `范围：${scopeNames[snapshot.scope] || snapshot.scope || '全局'}`, `匹配方式：${snapshot.match_mode === 'plugin_id' ? '插件标识匹配' : '原精确匹配'}`, `目标：${snapshot.match_mode === 'plugin_id' ? snapshot.plugin_id || '—' : snapshot.target || '—'}`, `标签：${Array.isArray(snapshot.tags) ? snapshot.tags.join(', ') : ''}`, `优先级：${snapshot.priority ?? 50}`, `状态：${snapshot.enabled ? '启用' : '停用'}`].join('\n');
         updateWriteState();
       });
       fragment.append(button);
@@ -661,14 +703,16 @@ $('editor-form').addEventListener('change', (event) => {
   if (event.target.matches('input, textarea, select')) setDirty(true);
 });
 $('entry-scope').addEventListener('change', targetHint);
+$('entry-match-mode').addEventListener('change', targetHint);
 $('entry-target').addEventListener('input', targetHint);
+$('entry-plugin-id').addEventListener('input', targetHint);
 $('entry-plugin').addEventListener('change', () => {
   if ($('entry-plugin').value) {
-    $('entry-target').value = $('entry-plugin').value;
+    $('entry-plugin-id').value = $('entry-plugin').value;
     targetHint();
   } else {
-    $('target-hint').textContent = '请在关联目标中手动填写准确插件标识，读取和导出时精确匹配。';
-    $('entry-target').focus();
+    $('entry-plugin-id-hint').textContent = '请在插件标识中手动填写，未安装的插件也可使用。';
+    $('entry-plugin-id').focus();
   }
   setDirty(true);
 });
@@ -687,15 +731,17 @@ $('import-button').addEventListener('click', () => $('import-file').click());
 $('import-file').addEventListener('change', importJSON);
 $('render-button').addEventListener('click', openRender);
 $('render-scope').addEventListener('change', () => renderTargetHint());
+$('render-match-mode').addEventListener('change', () => renderTargetHint());
 $('render-target').addEventListener('input', () => renderTargetHint());
+$('render-plugin-id').addEventListener('input', () => renderTargetHint());
 $('render-plugin').addEventListener('change', () => {
   if ($('render-plugin').value) {
-    $('render-target').value = $('render-plugin').value;
+    $('render-plugin-id').value = $('render-plugin').value;
     renderTargetHint();
   } else {
-    $('render-target-hint').textContent = '请在关联目标中手动填写准确插件标识，读取和导出时精确匹配。';
+    $('render-plugin-id-hint').textContent = '请在插件标识中手动填写，未安装的插件也可使用。';
     invalidatePreview();
-    $('render-target').focus();
+    $('render-plugin-id').focus();
   }
 });
 $('render-form').addEventListener('submit', renderMarkdown);

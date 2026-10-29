@@ -30,11 +30,47 @@ class OnboardingTests(unittest.TestCase):
         revision = self.store.snapshot()["revision"]
         preview = self.setup()
         self.assertFalse(preview["applied"])
-        self.assertEqual(preview["rule"], "开始任务时，使用 memory-manager 读取全局启用记忆；\n涉及具体项目、技能或插件时，按准确作用域和目标检索相关记忆。\n仅应用与当前任务相关的内容；工具不可用时如实说明。\n")
+        self.assertEqual(preview["rule"], READER_RULE)
+        for requirement in ("memory_status", "memory_refresh", "plugin_id", "无需重装插件", "memory_setup", "明确同意", "其他聊天"):
+            self.assertIn(requirement, preview["rule"])
         self.assertEqual(preview["sha256"], hashlib.sha256(b"").hexdigest())
         self.assertFalse(self.home.exists())
         self.assertEqual(self.store.application_status()["onboarding_decision"], "pending")
         self.assertEqual(self.store.snapshot()["revision"], revision)
+
+    def test_memory_refresh_notice_is_independent_of_setup_choice(self):
+        self.store.set_onboarding_decision("declined")
+        self.store.entry_create({"title": "Task rule", "content": "Use this rule"})
+        before = self.store.snapshot()
+        status = dispatch(self.store, "memory_status", {})
+        self.assertIsNone(status["first_use_prompt"])
+        self.assertIn("memory_refresh", status["refresh_prompt"])
+        self.assertEqual(self.store.snapshot(), before)
+        self.store.refresh()
+        self.assertIsNone(dispatch(self.store, "memory_status", {})["refresh_prompt"])
+        self.assertEqual(self.store.application_status()["onboarding_decision"], "declined")
+
+    def test_rule_template_update_requires_new_consent_and_preserves_surroundings(self):
+        old_rule = "old reader rule"
+        self.home.mkdir()
+        original = "# Other rules\nKeep before\n" + BEGIN_READER + "\n" + old_rule + "\n" + END_READER + "\nKeep after\n"
+        self.path.write_text(original, encoding="utf-8")
+        self.store.set_onboarding_decision("configured")
+        preview = self.setup()
+        self.assertFalse(preview["already_configured"])
+        self.assertIn("-old reader rule", preview["diff"])
+        self.assertIn("+### 用户记忆的读取与更新", preview["diff"])
+        self.assertEqual(self.path.read_text(encoding="utf-8"), original)
+        with self.assertRaises(StoreError):
+            self.setup("apply", expected_sha256=preview["sha256"], expected_path=preview["path"])
+        result = self.setup("apply", confirmed=True, expected_sha256=preview["sha256"], expected_path=preview["path"])
+        self.assertTrue(result["applied"])
+        updated = self.path.read_text(encoding="utf-8")
+        self.assertTrue(updated.startswith("# Other rules\nKeep before\n"))
+        self.assertTrue(updated.endswith("Keep after\n"))
+        self.assertIn(READER_RULE.rstrip(), updated)
+        self.assertNotIn(old_rule, updated)
+        self.assertEqual(Path(result["backup"]).read_text(encoding="utf-8"), original)
 
     def test_apply_requires_explicit_consent_preview_hash_and_path(self):
         for options in ({}, {"confirmed": False}, {"confirmed": True},

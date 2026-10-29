@@ -3,6 +3,7 @@
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from datetime import datetime
 from pathlib import Path
 
@@ -83,7 +84,8 @@ class ApplicationStateTests(unittest.TestCase):
         self.assertEqual(targets[("plugin", "Android Engineering Ops")], 1)
         self.assertNotIn(("plugin", "disabled"), targets)
         self.assertNotIn(("plugin", "deleted"), targets)
-        self.assertTrue(all(set(item) == {"scope", "target", "count"} for item in result["available_targets"]))
+        self.assertTrue(all(set(item) == {"scope", "target", "match_mode", "plugin_id", "count"}
+                            for item in result["available_targets"]))
         self.assertEqual([item["id"] for item in self.store.refresh()["entries"]], [global_entry["id"]])
 
     def test_disabled_and_deleted_globals_are_excluded(self):
@@ -115,7 +117,7 @@ class ApplicationStateTests(unittest.TestCase):
     def test_failed_entry_decode_does_not_record_read(self):
         entry = self.create()
         baseline = self.store.application_status()
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             conn.execute("UPDATE entries SET tags='invalid json' WHERE id=?", (entry["id"],))
         with self.assertRaises(ValueError):
             self.store.refresh()
@@ -142,7 +144,7 @@ class ApplicationStateTests(unittest.TestCase):
         entry = self.create(scope="plugin", target="existing-plugin")
         categories = self.store.snapshot()["categories"]
         history = self.store.history(entry["id"])
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn, conn:
             self.assertEqual(conn.execute("SELECT key FROM metadata").fetchall(), [("revision",)])
         reopened = Store(self.db_path)
         snapshot = reopened.snapshot()

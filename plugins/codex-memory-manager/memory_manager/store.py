@@ -9,6 +9,8 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .catalog import PLUGIN_NAME
+
 
 class StoreError(Exception):
     def __init__(self, message: str, status: int = 400):
@@ -17,7 +19,8 @@ class StoreError(Exception):
 
 
 SCOPES = {"global", "project", "skill", "plugin"}
-ENTRY_FIELDS = {"title", "content", "category_id", "scope", "target", "tags", "priority", "enabled"}
+ENTRY_FIELDS = {"title", "content", "category_id", "scope", "target", "match_mode", "plugin_id",
+                "tags", "priority", "enabled"}
 IMPORT_FIELDS = ENTRY_FIELDS | {"id", "deleted", "created_at", "updated_at", "version"}
 INITIAL_CATEGORIES = (
     ("preferences", "偏好"), ("projects", "项目"), ("skills", "技能"),
@@ -46,6 +49,13 @@ def _identifier(value, field="id"):
 def _object(value, name):
     if not isinstance(value, dict):
         raise StoreError(f"{name} 必须是对象")
+    return value
+
+
+def _plugin_id(value):
+    value = _text(value, "plugin_id", limit=64)
+    if not PLUGIN_NAME.fullmatch(value):
+        raise StoreError("plugin_id 必须是准确插件标识，仅支持小写字母、数字、单连字符和点，不能包含市场名或版本")
     return value
 
 
@@ -81,6 +91,8 @@ class Store:
                     id TEXT PRIMARY KEY, title TEXT NOT NULL, content TEXT NOT NULL,
                     category_id TEXT NOT NULL REFERENCES categories(id),
                     scope TEXT NOT NULL, target TEXT NOT NULL, tags TEXT NOT NULL,
+                    match_mode TEXT NOT NULL DEFAULT 'exact',
+                    plugin_id TEXT NOT NULL DEFAULT '',
                     priority INTEGER NOT NULL, enabled INTEGER NOT NULL,
                     deleted INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
@@ -100,6 +112,13 @@ class Store:
             for statement in schema.split(";"):
                 if statement.strip():
                     conn.execute(statement)
+            # Existing memories keep their exact matching semantics. Adding the
+            # columns does not edit entries, history, or the memory revision.
+            columns = {row["name"] for row in conn.execute("PRAGMA table_info(entries)")}
+            if "match_mode" not in columns:
+                conn.execute("ALTER TABLE entries ADD COLUMN match_mode TEXT NOT NULL DEFAULT 'exact'")
+            if "plugin_id" not in columns:
+                conn.execute("ALTER TABLE entries ADD COLUMN plugin_id TEXT NOT NULL DEFAULT ''")
             initialized = conn.execute("SELECT value FROM metadata WHERE key = 'revision'").fetchone()
             if initialized is None:
                 conn.execute("INSERT INTO metadata(key,value) VALUES ('revision','0')")
@@ -177,7 +196,7 @@ class Store:
             raise StoreError("不支持的条目字段: " + ", ".join(sorted(unexpected)))
         entry = {
             "title": "", "content": "", "category_id": "preferences", "scope": "global",
-            "target": "", "tags": [], "priority": 50, "enabled": True,
+            "target": "", "match_mode": "exact", "plugin_id": "", "tags": [], "priority": 50, "enabled": True,
         }
         entry.update(data)
         entry["title"] = _text(entry["title"], "title", limit=500).strip()
@@ -188,12 +207,24 @@ class Store:
         if not isinstance(entry["scope"], str) or entry["scope"] not in SCOPES:
             raise StoreError("scope 必须是 global、project、skill 或 plugin")
         _text(entry["target"], "target", empty=True, limit=4096)
-        if entry["scope"] == "global":
+        _text(entry["plugin_id"], "plugin_id", empty=True, limit=64)
+        if not isinstance(entry["match_mode"], str) or entry["match_mode"] not in {"exact", "plugin_id"}:
+            raise StoreError("match_mode 必须是 exact 或 plugin_id")
+        if entry["match_mode"] == "plugin_id":
+            if entry["scope"] != "plugin":
+                raise StoreError("插件标识匹配仅适用于 plugin 作用域")
+            entry["plugin_id"] = _plugin_id(entry["plugin_id"])
+            if entry["target"]:
+                raise StoreError("插件标识匹配不使用 target，请清空 target 后填写 plugin_id")
+            entry["target"] = ""
+        elif entry["scope"] == "global":
             # A leftover target after changing scope must not hide a global
             # memory from consumers selecting scope=global, target="".
             entry["target"] = ""
         elif not entry["target"].strip():
             raise StoreError("项目、技能和插件记忆必须指定 target")
+        if entry["match_mode"] == "exact":
+            entry["plugin_id"] = ""
         if not isinstance(entry["tags"], list) or len(entry["tags"]) > 100:
             raise StoreError("tags 必须是最多 100 项的字符串数组")
         tags = []
@@ -224,7 +255,7 @@ class Store:
 
     @staticmethod
     def _save(conn, entry):
-        fields = ("id", "title", "content", "category_id", "scope", "target", "tags", "priority",
+        fields = ("id", "title", "content", "category_id", "scope", "target", "match_mode", "plugin_id", "tags", "priority",
                   "enabled", "deleted", "created_at", "updated_at", "version")
         values = [json.dumps(entry[key], ensure_ascii=False) if key == "tags" else entry[key] for key in fields]
         conn.execute(
@@ -269,35 +300,43 @@ class Store:
     def refresh(self, contexts=None):
         """Read relevant enabled memories and acknowledge this database revision.
 
-        Global memories are always included; other scopes require an exact
-        scope/target pair. Validation, the read, and its receipt are atomic so a
+        Global memories are always included; exact targets and plugin identifiers
+        are distinct context selectors. Validation, the read, and receipt are atomic so a
         concurrent edit cannot be incorrectly acknowledged as already read.
         """
         contexts = [] if contexts is None else contexts
         if not isinstance(contexts, list) or len(contexts) > MAX_ENTRIES:
             raise StoreError("contexts 必须是最多 10000 项的对象数组")
         selected_contexts = set()
+        selected_plugins = set()
         for context in contexts:
             _object(context, "context")
-            if set(context) != {"scope", "target"}:
-                raise StoreError("context 必须仅包含 scope 和 target")
+            if set(context) not in ({"scope", "target"}, {"scope", "plugin_id"}):
+                raise StoreError("context 必须包含 scope 和 target，或 scope='plugin' 与 plugin_id；两种目标不能混用")
             scope = context["scope"]
             if not isinstance(scope, str) or scope not in SCOPES - {"global"}:
                 raise StoreError("context scope 必须是 project、skill 或 plugin")
-            target = _text(context["target"], "context target", limit=4096)
-            selected_contexts.add((scope, target))
+            if "plugin_id" in context:
+                if scope != "plugin":
+                    raise StoreError("plugin_id context 仅适用于 plugin 作用域")
+                selected_plugins.add(_plugin_id(context["plugin_id"]))
+            else:
+                target = _text(context["target"], "context target", limit=4096)
+                selected_contexts.add((scope, target))
         with self._transaction() as conn:
             entries = []
             for row in conn.execute(
                 "SELECT * FROM entries WHERE enabled=1 AND deleted=0 "
                 "ORDER BY priority DESC,updated_at DESC,id"
             ):
-                if row["scope"] == "global" or (row["scope"], row["target"]) in selected_contexts:
+                if (row["scope"] == "global"
+                        or (row["match_mode"] == "exact" and (row["scope"], row["target"]) in selected_contexts)
+                        or (row["match_mode"] == "plugin_id" and row["plugin_id"] in selected_plugins)):
                     entries.append(self._entry(row))
             available_targets = [dict(row) for row in conn.execute(
-                "SELECT scope,target,COUNT(*) AS count FROM entries "
+                "SELECT scope,target,match_mode,plugin_id,COUNT(*) AS count FROM entries "
                 "WHERE enabled=1 AND deleted=0 AND scope!='global' "
-                "GROUP BY scope,target ORDER BY scope,target"
+                "GROUP BY scope,target,match_mode,plugin_id ORDER BY scope,match_mode,target,plugin_id"
             )]
             revision = int(conn.execute("SELECT value FROM metadata WHERE key='revision'").fetchone()[0])
             conn.executemany(
@@ -399,6 +438,8 @@ class Store:
                 raise StoreError("请先恢复已删除条目", 409)
             editable = {key: current[key] for key in ENTRY_FIELDS}
             editable.update(patch)
+            if patch.get("match_mode") == "plugin_id" and "target" not in patch:
+                editable["target"] = ""
             current.update(self._validate_entry(editable, self._categories(conn)))
             current.update(updated_at=_now(), version=current["version"] + 1)
             self._save(conn, current)
@@ -459,7 +500,7 @@ class Store:
             if row is None:
                 raise StoreError("历史版本不存在", 404)
             old = json.loads(row["entry_json"])
-            restored = self._validate_entry({key: old[key] for key in ENTRY_FIELDS}, self._categories(conn))
+            restored = self._validate_entry({key: old[key] for key in ENTRY_FIELDS if key in old}, self._categories(conn))
             current.update(restored)
             current.update(deleted=old["deleted"], updated_at=_now(), version=current["version"] + 1)
             self._save(conn, current)
@@ -468,7 +509,7 @@ class Store:
 
     def export_data(self):
         snapshot = self.snapshot()
-        return {"format": "codex-memory-manager", "schema_version": 1,
+        return {"format": "codex-memory-manager", "schema_version": 2,
                 "categories": snapshot["categories"], "entries": snapshot["entries"]}
 
     def import_data(self, payload):
@@ -477,7 +518,7 @@ class Store:
             raise StoreError("导入数据包含不支持的字段")
         if payload.get("format", "codex-memory-manager") != "codex-memory-manager":
             raise StoreError("导入文件格式不匹配")
-        if type(payload.get("schema_version", 1)) is not int or payload.get("schema_version", 1) != 1:
+        if type(payload.get("schema_version", 1)) is not int or payload.get("schema_version", 1) not in {1, 2}:
             raise StoreError("不支持的导入文件版本")
         category_items, entry_items = payload.get("categories", []), payload.get("entries", [])
         if not isinstance(category_items, list) or not isinstance(entry_items, list):
@@ -535,7 +576,7 @@ class Store:
 
     def select_entries(self, filters=None):
         filters = {} if filters is None else _object(filters, "筛选条件")
-        if set(filters) - {"scope", "target", "query", "enabled"}:
+        if set(filters) - {"scope", "target", "plugin_id", "match_mode", "query", "enabled"}:
             raise StoreError("不支持的筛选条件")
         scope = filters.get("scope")
         if scope is not None and (not isinstance(scope, str) or scope not in SCOPES):
@@ -543,6 +584,16 @@ class Store:
         target = filters.get("target")
         if target is not None:
             _text(target, "target", empty=True, limit=4096)
+        plugin_id = filters.get("plugin_id")
+        if plugin_id is not None:
+            _text(plugin_id, "plugin_id", empty=True, limit=64)
+            if plugin_id:
+                _plugin_id(plugin_id)
+        if target and plugin_id:
+            raise StoreError("target 与 plugin_id 不能同时为非空；请选择精确匹配或插件标识匹配")
+        match_mode = filters.get("match_mode")
+        if match_mode is not None and (not isinstance(match_mode, str) or match_mode not in {"exact", "plugin_id"}):
+            raise StoreError("match_mode 必须是 exact 或 plugin_id")
         query = _text(filters.get("query", ""), "query", empty=True, limit=4096).casefold().strip()
         enabled = filters.get("enabled", True)
         if enabled is not None and type(enabled) is not bool:
@@ -553,7 +604,11 @@ class Store:
                 entry = self._entry(row)
                 if scope is not None and entry["scope"] != scope:
                     continue
-                if target is not None and entry["target"] != target:
+                if match_mode is not None and entry["match_mode"] != match_mode:
+                    continue
+                if plugin_id and (entry["match_mode"] != "plugin_id" or entry["plugin_id"] != plugin_id):
+                    continue
+                if target is not None and not plugin_id and (entry["match_mode"] != "exact" or entry["target"] != target):
                     continue
                 if enabled is not None and entry["enabled"] != enabled:
                     continue

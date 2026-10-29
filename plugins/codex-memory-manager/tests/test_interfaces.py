@@ -3,6 +3,8 @@ import http.client
 import json
 from pathlib import Path
 import tempfile
+import subprocess
+import sys
 import threading
 import unittest
 from http.server import ThreadingHTTPServer
@@ -43,6 +45,43 @@ class InterfaceTests(unittest.TestCase):
         self.assertNotIn("其他项目", result["markdown"])
         with self.assertRaises(StoreError):
             dispatch(self.store, "memory_render", {"scope": "project"})
+
+    def test_mcp_matchers_and_render_do_not_cross_match_same_text(self):
+        exact = self.remember(title="Exact", scope="plugin", target="test-plugin")
+        identified = self.remember(title="Plugin ID", scope="plugin", target="",
+                                   match_mode="plugin_id", plugin_id="test-plugin")
+        for args, expected in (({"scope": "plugin", "target": "test-plugin"}, exact),
+                               ({"scope": "plugin", "plugin_id": "test-plugin"}, identified)):
+            response = rpc_response(self.store, {"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+                "params": {"name": "memory_search", "arguments": args}})
+            body = json.loads(response["result"]["content"][0]["text"])
+            self.assertEqual([e["id"] for e in body["entries"]], [expected["id"]])
+            render_args = dict(args)
+            if "plugin_id" in args:
+                render_args["match_mode"] = "plugin_id"
+            rendered = dispatch(self.store, "memory_render", render_args)
+            self.assertEqual(rendered["count"], 1)
+            self.assertIn("### " + expected["title"], rendered["markdown"])
+        mixed = rpc_response(self.store, {"jsonrpc": "2.0", "id": 4, "method": "tools/call",
+            "params": {"name": "memory_search", "arguments": {
+                "scope": "plugin", "target": "test-plugin", "plugin_id": "test-plugin"}}})
+        self.assertTrue(mixed["result"]["isError"])
+
+    def test_cli_publish_accepts_plugin_id_without_leaking_exact_entries(self):
+        self.remember(title="Exact must stay out", scope="plugin", target="test-plugin")
+        self.remember(title="Included plugin memory", scope="plugin", match_mode="plugin_id", plugin_id="test-plugin")
+        path = self.root / "AGENTS.md"
+        run = subprocess.run([sys.executable, str(Path(__file__).resolve().parent.parent / "run.py"),
+            "--db", str(self.root / "memory.sqlite3"), "publish", "--file", str(path),
+            "--scope", "plugin", "--match-mode", "plugin_id", "--plugin-id", "test-plugin"],
+            capture_output=True, text=True, encoding="utf-8", timeout=15)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        preview = json.loads(run.stdout)
+        self.assertFalse(preview["applied"])
+        self.assertEqual(preview["count"], 1)
+        self.assertIn("Included plugin memory", preview["content"])
+        self.assertNotIn("Exact must stay out", preview["content"])
+        self.assertFalse(path.exists())
 
     def test_publish_preserves_surrounding_text_and_rejects_stale_hash(self):
         self.remember()

@@ -12,7 +12,7 @@
 | 完整安装标识 | `codex-memory-manager@yimeng02` |
 | 插件目录 | `plugins/codex-memory-manager` |
 | 插件显示名称 | 规则与记忆管理器 |
-| 本版 | `0.2.0` |
+| 本版 | `0.2.1` |
 
 填写仓库 URL，不填写 `raw.githubusercontent.com` 链接、某个文件的浏览页或 ZIP 下载链接。市场文件位于仓库根目录下的 `.agents/plugins/marketplace.json`；本插件条目的 `source.path` 为 `./plugins/codex-memory-manager`，相对于仓库根目录解析。Codex 从该插件目录发现 `plugin.json`、`mcp.json` 和 `skills/`。已有市场名称和禅道插件条目保持不变，只向现有市场追加本插件。[官方打包说明](https://developers.openai.com/plugins/build/plugins)
 
@@ -80,7 +80,7 @@ git ls-remote https://github.com/yimeng02/codex-plugins.git HEAD
 
 | 层次 | 证据 |
 | --- | --- |
-| 市场分发 | 插件管理能看到 GitHub 来源，下载得到 `0.2.0` |
+| 市场分发 | 插件管理能看到 GitHub 来源，下载得到 `0.2.1` |
 | 本机 MCP | 对实际缓存目录的初始化、工具列表和只读调用通过 |
 | 桌面聊天 | 新聊天实际获得并调用 `memory_snapshot` 或 `memory_search` |
 
