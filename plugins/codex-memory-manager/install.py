@@ -250,7 +250,7 @@ class Codex:
 
 
 def validate_source(source):
-    required = ["mcp.json", ".mcp.json", ".codex-plugin/plugin.json", "run.py", "doctor.py", "memory_manager/store.py", "memory_manager/app.py", "memory_manager/autoload.py", "memory_manager/diagnostics.py", "web/index.html", "web/app.js", "web/style.css", "skills/memory-manager/SKILL.md", "skills/memory-manager/agents/openai.yaml", "hooks/hooks.json", "hooks/memory_context.py", "tests/test_store.py", "tests/test_interfaces.py", "tests/test_installer.py", "tests/test_autoload.py"]
+    required = ["mcp.json", ".mcp.json", ".codex-plugin/plugin.json", "run.py", "doctor.py", "memory_manager/store.py", "memory_manager/app.py", "memory_manager/autoload.py", "memory_manager/diagnostics.py", "memory_manager/web_manager.py", "web/index.html", "web/app.js", "web/style.css", "skills/memory-manager/SKILL.md", "skills/memory-manager/agents/openai.yaml", "hooks/hooks.json", "hooks/memory_context.py", "tests/test_store.py", "tests/test_interfaces.py", "tests/test_installer.py", "tests/test_autoload.py", "tests/test_usage.py", "tests/test_web_manager.py"]
     for relative in required:
         if not (source / relative).is_file():
             raise InstallError("插件文件缺失：" + relative)

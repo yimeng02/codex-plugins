@@ -12,7 +12,7 @@
 | 完整安装标识 | `codex-memory-manager@yimeng02` |
 | 插件目录 | `plugins/codex-memory-manager` |
 | 插件显示名称 | 规则与记忆管理器 |
-| 本版 | `0.2.4` |
+| 本版 | `0.2.5` |
 
 填写仓库 URL，不填写 `raw.githubusercontent.com` 链接、某个文件的浏览页或 ZIP 下载链接。市场文件位于仓库根目录下的 `.agents/plugins/marketplace.json`；本插件条目的 `source.path` 为 `./plugins/codex-memory-manager`，相对于仓库根目录解析。Codex 从该插件目录发现原生 `.codex-plugin/plugin.json`、`.mcp.json`、`skills/` 和 `hooks/`。已有市场名称和禅道插件条目保持不变，只向现有市场追加本插件。[官方打包说明](https://developers.openai.com/plugins/build/plugins)
 
@@ -80,11 +80,13 @@ git ls-remote https://github.com/yimeng02/codex-plugins.git HEAD
 
 | 层次 | 证据 |
 | --- | --- |
-| 市场分发 | 插件管理能看到 GitHub 来源，下载得到 `0.2.4` |
+| 市场分发 | 插件管理能看到 GitHub 来源，下载得到 `0.2.5` |
 | 本机 MCP | 对实际缓存目录的初始化、工具列表和只读调用通过 |
 | 桌面聊天 | 新聊天实际获得并调用 `memory_snapshot` 或 `memory_search` |
 
 技能出现在列表中、CLI 显示 installed/enabled，以及本机 MCP 自检通过，都不能替代最后一项。GitHub 分发提供一致的安装入口；仍缺少工具时，应继续检查桌面的 MCP 启动错误、Python PATH、执行环境和启用配置。[本地 stdio 插件运行要求](https://developers.openai.com/plugins/deploy/desktop-only)
+
+首次实际使用会先说明如何查看、搜索、明确保存和管理记忆，返回管理页面的可点击链接及运行状态，再询问尚未选择的全局读取规则。之后仍可说“使用 memory-manager，告诉我怎么管理记忆”或“给我管理页面地址”；插件通过 `memory_status(include_help=true)` 提供说明和实际 URL，已配置用户不会重复触发全局规则选择。默认入口为[本地管理页面](http://127.0.0.1:8765/)，实际端口以状态返回为准；没有验证成功时不能声称服务已经运行。
 
 从 GitHub 安装不会生成本地安装器的回执。诊断时应使用 `codex plugin add ... --json` 返回的实际 `installedPath`，避免旧回执指向上一份缓存。在插件目录 `plugins/codex-memory-manager` 运行：
 

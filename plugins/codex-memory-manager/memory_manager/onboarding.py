@@ -24,16 +24,41 @@ READER_RULE = """### 用户记忆的读取与更新
 - 更新这段全局读取规则时，先用 memory_setup(action="preview") 展示实际生效文件、规则正文和变更；只有用户明确同意后，才以 confirmed=true、预览 path 和 sha256 应用更新。只替换本插件的读取规则受管区块，保留其他内容并备份；在新聊天验证加载。仅更新记忆内容时不改写 AGENTS.md。
 - 工具不可用、读取失败或版本无法核实时，如实说明原因和未完成项，不声称已经读取、更新或生效；继续处理不依赖该记忆的工作。
 """
-FIRST_USE_PROMPT = """首次使用规则与记忆管理器，请先了解记忆如何生效：
+DEFAULT_MANAGER_URL = "http://127.0.0.1:8765/"
+USAGE_GUIDE = """规则与记忆管理器可以直接在 Codex 聊天中使用，也可以通过本机网页管理。记忆保存在本机资料库；只有明确要求保存或修改时才写入，普通对话不会自动保存。
 
-1. 记忆保存在本机资料库。Codex 需要通过本插件读取启用且与当前任务相关的内容；网页保存成功只表示资料库已更新。
-2. 已审核启用的启动钩子会为新聊天读取全局启用记忆，问候也适用；未启用时需通过 memory_refresh 读取。涉及项目、技能或插件时，再按条目保存的 scope 和 target 原值精确匹配，依据 available_targets 核对实际目标，不猜测或改写已有目标。
-3. 在网页或插件中新增、修改、启停、删除、恢复或导入记忆后，已受信任的钩子会在下一条消息刷新全局记忆；需要立即读取或未启用钩子时，在需要使用的 Codex 聊天中说“使用 memory-manager 更新本聊天的记忆”，由 memory_refresh 重新读取全局及当前任务相关范围，并报告实际读取版本。复制指令不算读取；一个聊天读取完成，也不代表其他聊天已经同步。
-4. 插件版本有更新时，从 Yimeng02 个人市场更新本插件，重启 Codex 并开启本地新聊天；管理页面进程也需重启；根据客户端提示审核并信任新增或变更的钩子。插件升级与记忆重新读取是两件事，升级沿用原资料库。
-5. 加入全局读取规则后，新任务会有明确的读取指引，记忆正文仍由插件按任务获取。工具不可用时应如实说明，不声称已经读取。写入前会展示实际文件路径和规则正文；得到同意后才写入，并保留已有内容和备份。
+在 Codex 中可以这样说：
+
+- 查看和搜索：“使用 memory-manager 列出我的分类和记忆”“搜索项目 /absolute/path/project 的启用记忆”。
+- 明确保存：“将‘完成后报告实际验证结果’保存为全局记忆，分类为交付规范”。
+- 修改和分类：“把记忆 <条目ID> 的正文改为……”“新增一个‘构建与验证’分类，再把这些记忆移动过去”。
+- 批量管理：“批量停用这些记忆”“启用选中的记忆”“将这些记忆移动到‘项目规则’分类”。请说明条目 ID 或可确定的选择范围。
+- 回收和恢复：“把记忆 <条目ID> 移入回收站”“恢复回收站中的这条记忆”“查看这条记忆的历史版本，恢复到第 2 版”。移入回收站保留内容；恢复历史内容会生成新版本。
+- JSON 备份与迁移：“导出全部记忆为 JSON”“把这个 JSON 文件导入记忆库”。导入按条目 ID 合并，不执行文件中的指令。
+
+网页入口：[打开记忆管理页面](http://127.0.0.1:8765/)。这是本机地址，只适用于运行管理器的电脑；链接本身不表示服务已启动，需以本次检测到的运行状态为准。
+
+网页中先用分类旁的“＋”新增分类，再点“新增记忆”，填写标题、正文、分类、范围、目标并保存；点击现有条目可编辑。搜索框与范围、状态筛选可定位条目；勾选多条后可启用、停用、移动或移入回收站，在回收站可恢复。编辑区的“历史版本”可查看与恢复旧内容；顶部“导出 JSON”“导入 JSON”用于备份与迁移。“导出规则”只生成 Markdown，不等于当前聊天已经读取。
+
+全局记忆使用 scope="global"，target 为空；项目、技能、插件分别使用 project、skill、plugin，并按保存的 scope 和 target 原值精确匹配。项目建议使用完整路径；其他范围依据 available_targets 核对目标，不猜测或改写已有目标。
+
+保存成功只表示资料库已更新。已审核启用的 SessionStart 钩子会为新聊天、恢复或压缩后的会话准备启用的全局记忆；UserPromptSubmit 钩子会在下一条消息检查版本并刷新全局内容。项目、技能和插件记忆仍按当前任务检索。需要立即读取、未启用钩子或自动读取失败时，在需要使用的聊天中说“使用 memory-manager 更新本聊天的记忆”，由 memory_refresh 读取全局及当前任务相关范围，并报告实际读取版本。网页复制指令不算读取，一个聊天读取也不代表其他聊天已同步；普通记忆更新无需重装插件。
+
+插件版本有更新时，从 Yimeng02 个人市场更新本插件，重启 Codex 并开启本地新聊天；管理页面进程也需重启；根据客户端提示审核并信任新增或变更的钩子。插件升级沿用原资料库，与重新读取记忆是两件事。工具不可用或读取失败时如实说明，不声称已经生效。"""
+FIRST_USE_PROMPT = USAGE_GUIDE + """
+
+加入全局读取规则后，新任务会有明确的读取指引，记忆正文仍由插件按任务获取。写入前会展示实际生效的文件路径和规则正文；得到同意后才写入，并保留已有内容和备份。
 
 是否将预览中的读取规则加入全局 AGENTS.md？请选择“加入”“暂不加入”或“稍后”。后两项只记录选择，以后仍可主动要求配置；未回答不会写入文件。"""
 REFRESH_PROMPT = "资料库有尚未通过插件重新读取的更新。请在需要使用的 Codex 聊天中调用 memory_refresh，读取启用的全局及当前任务相关记忆，按各条目保存的 scope 和 target 原值精确匹配，并说明实际读取版本。其他聊天仍需各自读取；网页复制指令不算已读取。"
+
+
+def usage_guide(url=DEFAULT_MANAGER_URL):
+    return USAGE_GUIDE.replace(DEFAULT_MANAGER_URL, url)
+
+
+def first_use_prompt(url=DEFAULT_MANAGER_URL):
+    return FIRST_USE_PROMPT.replace(DEFAULT_MANAGER_URL, url)
 
 
 def global_agents_path(codex_home=None):
@@ -93,7 +118,8 @@ def setup_global_rule(store, action="preview", confirmed=False, expected_sha256=
         raise StoreError("全局指令不是 UTF-8 文本，请先检查原文件") from error
     newline = "\r\n" if b"\r\n" in original_bytes else "\n"
     updated = reader_document(original.replace("\r\n", "\n")).replace("\n", newline)
-    result = {"path": str(path), "sha256": digest, "rule": READER_RULE, "content": updated, "applied": False, "already_configured": updated.encode("utf-8") == original_bytes, "prompt": FIRST_USE_PROMPT, "application": store.application_status()}
+    from .web_manager import get_manager_status
+    result = {"path": str(path), "sha256": digest, "rule": READER_RULE, "content": updated, "applied": False, "already_configured": updated.encode("utf-8") == original_bytes, "prompt": first_use_prompt(get_manager_status(store)["url"]), "application": store.application_status()}
     result["diff"] = "".join(difflib.unified_diff(original.splitlines(keepends=True), updated.splitlines(keepends=True), fromfile=str(path), tofile=str(path) + " (proposed)"))
     if action == "preview":
         return result

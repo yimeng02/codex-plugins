@@ -10,7 +10,10 @@ from unittest import mock
 from http.server import ThreadingHTTPServer
 
 from memory_manager.app import dispatch, handler_for, rpc_response
-from memory_manager.onboarding import BEGIN_READER, END_READER, FIRST_USE_PROMPT, READER_RULE, REFRESH_PROMPT, setup_global_rule
+from memory_manager.onboarding import (
+    BEGIN_READER, DEFAULT_MANAGER_URL, END_READER, FIRST_USE_PROMPT, READER_RULE,
+    REFRESH_PROMPT, USAGE_GUIDE, first_use_prompt, setup_global_rule, usage_guide,
+)
 from memory_manager.store import Store, StoreError
 
 
@@ -40,6 +43,57 @@ class OnboardingTests(unittest.TestCase):
         self.assertFalse(self.home.exists())
         self.assertEqual(self.store.application_status()["onboarding_decision"], "pending")
         self.assertEqual(self.store.snapshot()["revision"], revision)
+
+    def test_usage_help_covers_management_before_global_rule_choice(self):
+        self.assertEqual(usage_guide(), USAGE_GUIDE)
+        self.assertEqual(first_use_prompt(), FIRST_USE_PROMPT)
+        self.assertTrue(FIRST_USE_PROMPT.startswith(USAGE_GUIDE))
+        for operation in ("查看", "搜索", "明确保存", "修改", "分类", "批量", "停用", "启用", "移动", "回收站", "恢复", "历史版本", "导入", "导出", "JSON"):
+            self.assertIn(operation, USAGE_GUIDE)
+        self.assertIn("普通对话不会自动保存", USAGE_GUIDE)
+        self.assertIn("scope 和 target 原值精确匹配", USAGE_GUIDE)
+        self.assertIn("memory_refresh", USAGE_GUIDE)
+        self.assertIn("UserPromptSubmit", USAGE_GUIDE)
+        self.assertIn("一个聊天读取也不代表其他聊天已同步", USAGE_GUIDE)
+        self.assertNotIn("是否将预览中的读取规则", USAGE_GUIDE)
+        self.assertIn("是否将预览中的读取规则", FIRST_USE_PROMPT)
+
+    def test_help_uses_clickable_actual_url_without_reformatting_the_guide(self):
+        actual_url = "http://127.0.0.1:9876/"
+        for template, render in ((USAGE_GUIDE, usage_guide), (FIRST_USE_PROMPT, first_use_prompt)):
+            actual = render(actual_url)
+            self.assertIn("[打开记忆管理页面](" + actual_url + ")", actual)
+            self.assertNotIn(DEFAULT_MANAGER_URL, actual)
+            self.assertEqual(actual.replace(actual_url, DEFAULT_MANAGER_URL), template)
+            self.assertIn("链接本身不表示服务已启动", actual)
+
+    def test_preview_uses_the_manager_status_url_without_recording_a_choice(self):
+        actual_url = "http://127.0.0.1:9876/"
+        before = self.store.snapshot()
+        with mock.patch("memory_manager.web_manager.get_manager_status", return_value={"url": actual_url, "running": False, "verified": False}) as status:
+            preview = self.setup()
+        status.assert_called_once_with(self.store)
+        self.assertEqual(preview["prompt"], first_use_prompt(actual_url))
+        self.assertEqual(preview["rule"], READER_RULE)
+        self.assertEqual(self.store.snapshot(), before)
+        self.assertFalse(self.home.exists())
+        self.assertEqual(self.store.application_status()["onboarding_decision"], "pending")
+
+    def test_configured_or_declined_users_can_request_help_without_setup_prompt(self):
+        actual_url = "http://127.0.0.1:9876/"
+        for decision in ("configured", "declined", "deferred"):
+            with self.subTest(decision=decision):
+                self.store.set_onboarding_decision(decision)
+                before = self.store.snapshot()
+                with mock.patch("memory_manager.app.get_manager_status", return_value={"url": actual_url, "running": False, "verified": False}):
+                    status = dispatch(self.store, "memory_status", {"include_help": True})
+                self.assertIsNone(status["first_use_prompt"])
+                self.assertEqual(status["usage_guide"], usage_guide(actual_url))
+                self.assertEqual(status["web_manager"]["url"], actual_url)
+                self.assertFalse(status["web_manager"]["verified"])
+                self.assertEqual(self.store.snapshot(), before)
+                self.assertEqual(self.store.application_status()["onboarding_decision"], decision)
+                self.assertFalse(self.home.exists())
 
     def test_memory_refresh_notice_is_independent_of_setup_choice(self):
         self.store.set_onboarding_decision("declined")
@@ -187,14 +241,17 @@ class OnboardingTests(unittest.TestCase):
             self.assertEqual(result["application"]["onboarding_decision"], expected)
             self.assertFalse(self.home.exists())
             reply = rpc_response(self.store, {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
-            self.assertNotIn("On actual use in a Codex chat", reply["result"]["instructions"])
+            self.assertNotIn("On actual first use in a Codex chat", reply["result"]["instructions"])
             self.assertIsNone(dispatch(self.store, "memory_status", {})["first_use_prompt"])
 
     def test_initialize_offers_consent_gated_first_use(self):
         reply = rpc_response(self.store, {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
-        self.assertIn("On actual use in a Codex chat", reply["result"]["instructions"])
+        self.assertIn("On actual first use in a Codex chat", reply["result"]["instructions"])
         self.assertIn("explicit affirmative answer", reply["result"]["instructions"])
         self.assertIn("call memory_status", reply["result"]["instructions"])
+        self.assertIn("include_help=true", reply["result"]["instructions"])
+        self.assertIn("clickable link", reply["result"]["instructions"])
+        self.assertIn("Background initialization must not write AGENTS", reply["result"]["instructions"])
         self.assertFalse(self.home.exists())
 
     def test_dispatch_exposes_only_fixed_global_setup_target(self):
