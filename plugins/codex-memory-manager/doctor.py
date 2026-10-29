@@ -35,7 +35,10 @@ def main(argv=None):
             print("安装时 CODEX_HOME：" + str(receipt.get("codex_home") or "默认用户目录"))
             root = host_path(installed)
         print("检查实际安装目录：" + str(root))
-        manifest = read_object(root / "plugin.json")
+        manifest_path = root / "plugin.json"
+        if not manifest_path.is_file():
+            manifest_path = root / ".codex-plugin" / "plugin.json"
+        manifest = read_object(manifest_path)
         print("缓存插件版本：" + str(manifest.get("version")))
         for filename in ("mcp.json", ".mcp.json"):
             if not (root / filename).is_file():

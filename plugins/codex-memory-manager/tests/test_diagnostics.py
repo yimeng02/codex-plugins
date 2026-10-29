@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -200,6 +201,19 @@ class DiagnosticTests(unittest.TestCase):
         installer.copy_payload(PROJECT_ROOT, plugin)
         for relative in (".mcp.json", ".codex-plugin/plugin.json", "skills/memory-manager/agents/openai.yaml", "doctor.py"):
             self.assertTrue((plugin / relative).is_file(), relative)
+
+    def test_doctor_accepts_native_only_distribution_and_probes_both_mcp_configs(self):
+        plugin = self.root / "native-plugin"
+        data = self.root / "isolated-data"
+        installer.copy_codex_payload(PROJECT_ROOT, plugin)
+        installer.atomic_write_json(plugin / "mcp.json", installer.build_mcp(sys.executable, data))
+        installer.atomic_write_json(plugin / ".mcp.json", installer.build_legacy_mcp(sys.executable, data))
+        self.assertFalse((plugin / "plugin.json").exists())
+        result = subprocess.run([sys.executable, str(plugin / "doctor.py"), "--plugin-root", str(plugin),
+            "--data-dir", str(data)], capture_output=True, text=True, encoding="utf-8", timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for filename in ("mcp.json", ".mcp.json"):
+            self.assertIn(filename + "：MCP 握手、工具列表与只读调用通过", result.stdout)
 
     def test_real_packaged_subprocess_exposes_tools_in_both_formats(self):
         plugin = self.root / "plugin"

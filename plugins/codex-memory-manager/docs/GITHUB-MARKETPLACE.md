@@ -12,9 +12,9 @@
 | 完整安装标识 | `codex-memory-manager@yimeng02` |
 | 插件目录 | `plugins/codex-memory-manager` |
 | 插件显示名称 | 规则与记忆管理器 |
-| 本版 | `0.2.2` |
+| 本版 | `0.2.3` |
 
-填写仓库 URL，不填写 `raw.githubusercontent.com` 链接、某个文件的浏览页或 ZIP 下载链接。市场文件位于仓库根目录下的 `.agents/plugins/marketplace.json`；本插件条目的 `source.path` 为 `./plugins/codex-memory-manager`，相对于仓库根目录解析。Codex 从该插件目录发现 `plugin.json`、`mcp.json` 和 `skills/`。已有市场名称和禅道插件条目保持不变，只向现有市场追加本插件。[官方打包说明](https://developers.openai.com/plugins/build/plugins)
+填写仓库 URL，不填写 `raw.githubusercontent.com` 链接、某个文件的浏览页或 ZIP 下载链接。市场文件位于仓库根目录下的 `.agents/plugins/marketplace.json`；本插件条目的 `source.path` 为 `./plugins/codex-memory-manager`，相对于仓库根目录解析。Codex 从该插件目录发现原生 `.codex-plugin/plugin.json`、`.mcp.json`、`skills/` 和 `hooks/`。已有市场名称和禅道插件条目保持不变，只向现有市场追加本插件。[官方打包说明](https://developers.openai.com/plugins/build/plugins)
 
 ## 安装前确认 Python
 
@@ -80,7 +80,7 @@ git ls-remote https://github.com/yimeng02/codex-plugins.git HEAD
 
 | 层次 | 证据 |
 | --- | --- |
-| 市场分发 | 插件管理能看到 GitHub 来源，下载得到 `0.2.2` |
+| 市场分发 | 插件管理能看到 GitHub 来源，下载得到 `0.2.3` |
 | 本机 MCP | 对实际缓存目录的初始化、工具列表和只读调用通过 |
 | 桌面聊天 | 新聊天实际获得并调用 `memory_snapshot` 或 `memory_search` |
 
@@ -96,7 +96,7 @@ python3 doctor.py --plugin-root "<实际 installedPath>"
 
 ## 更新与数据
 
-发布新版源码时同步插件目录内的 `plugin.json`、兼容声明和 Python 包版本，并提交至 `main`；保留根市场里的现有条目。用户在桌面插件管理刷新市场来源后执行更新；CLI 可先刷新 Git 市场，再安装最新版本：
+发布新版源码时同步插件目录内的 `.codex-plugin/plugin.json` 和 Python 包版本，并提交至 `main`；保留根市场里的现有条目。用户在桌面插件管理刷新市场来源后执行更新；CLI 可先刷新 Git 市场，再安装最新版本：
 
 ```text
 codex plugin marketplace upgrade yimeng02 --json

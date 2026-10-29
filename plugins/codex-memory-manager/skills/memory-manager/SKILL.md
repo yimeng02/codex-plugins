@@ -9,7 +9,7 @@ description: 管理用户自建的 Codex 规则与记忆库。当用户要求查
 
 ## 自动读取
 
-已审核且启用的 SessionStart 钩子会直接准备启用全局记忆；UserPromptSubmit 在本聊天尚无准备记录或资料库版本变化时补充/更新。两者不依赖 MCP 服务就绪，因此问候也能获得偏好。安装插件不等于已信任钩子；钩子必须通过 Codex 的审核。不得自写 trusted_hash、冒充用户批准或使用绕过信任的参数。
+已审核且启用的 SessionStart 钩子会直接准备启用全局记忆；UserPromptSubmit 在本聊天尚无准备记录或资料库版本变化时补充/更新。两者不依赖 MCP 服务就绪，因此问候也能获得偏好。安装插件不等于已信任钩子；钩子必须通过 Codex 的审核。只有用户明确审核同意具体定义后，才能通过宿主支持的配置接口记录对应信任；不得冒充用户批准或使用绕过信任的参数。
 
 上下文中出现 MEMORY_MANAGER_DATA_JSON 时，以其中的 global_entries 与 revision 作为本次全局参考，替换之前由管理器提供的旧全局条目；revoked_entry_ids 不再应用。omitted_global_count 大于零表示部分内容未注入，不能声称全量已加载。其他作用域只提供 available_targets 索引，仍按本轮任务和准确匹配方式检索。
 
