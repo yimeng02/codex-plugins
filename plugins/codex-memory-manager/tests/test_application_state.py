@@ -84,7 +84,7 @@ class ApplicationStateTests(unittest.TestCase):
         self.assertEqual(targets[("plugin", "Android Engineering Ops")], 1)
         self.assertNotIn(("plugin", "disabled"), targets)
         self.assertNotIn(("plugin", "deleted"), targets)
-        self.assertTrue(all(set(item) == {"scope", "target", "match_mode", "plugin_id", "count"}
+        self.assertTrue(all(set(item) == {"scope", "target", "count"}
                             for item in result["available_targets"]))
         self.assertEqual([item["id"] for item in self.store.refresh()["entries"]], [global_entry["id"]])
 

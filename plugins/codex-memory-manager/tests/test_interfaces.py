@@ -9,7 +9,7 @@ import threading
 import unittest
 from http.server import ThreadingHTTPServer
 
-from memory_manager.app import dispatch, handler_for, managed_document, publish, rpc_response, BEGIN, END
+from memory_manager.app import dispatch, handler_for, managed_document, publish, rpc_response, BEGIN, END, TOOLS
 from memory_manager.store import Store, StoreError
 
 
@@ -46,42 +46,92 @@ class InterfaceTests(unittest.TestCase):
         with self.assertRaises(StoreError):
             dispatch(self.store, "memory_render", {"scope": "project"})
 
-    def test_mcp_matchers_and_render_do_not_cross_match_same_text(self):
-        exact = self.remember(title="Exact", scope="plugin", target="test-plugin")
-        identified = self.remember(title="Plugin ID", scope="plugin", target="",
-                                   match_mode="plugin_id", plugin_id="test-plugin")
-        for args, expected in (({"scope": "plugin", "target": "test-plugin"}, exact),
-                               ({"scope": "plugin", "plugin_id": "test-plugin"}, identified)):
+    def test_mcp_search_and_render_keep_plugin_targets_exact(self):
+        targets = ("test-plugin", "Test Plugin", "test-plugin-tools")
+        entries = [self.remember(title="Rule " + target, scope="plugin", target=target)
+                   for target in targets]
+        self.remember(title="Same target in project", scope="project", target="test-plugin")
+        self.remember(title="Disabled plugin rule", scope="plugin", target="test-plugin", enabled=False)
+        for target, expected in zip(targets, entries):
+            args = {"scope": "plugin", "target": target}
             response = rpc_response(self.store, {"jsonrpc": "2.0", "id": 3, "method": "tools/call",
                 "params": {"name": "memory_search", "arguments": args}})
             body = json.loads(response["result"]["content"][0]["text"])
             self.assertEqual([e["id"] for e in body["entries"]], [expected["id"]])
-            render_args = dict(args)
-            if "plugin_id" in args:
-                render_args["match_mode"] = "plugin_id"
-            rendered = dispatch(self.store, "memory_render", render_args)
+            rendered = dispatch(self.store, "memory_render", args)
             self.assertEqual(rendered["count"], 1)
             self.assertIn("### " + expected["title"], rendered["markdown"])
-        mixed = rpc_response(self.store, {"jsonrpc": "2.0", "id": 4, "method": "tools/call",
-            "params": {"name": "memory_search", "arguments": {
-                "scope": "plugin", "target": "test-plugin", "plugin_id": "test-plugin"}}})
-        self.assertTrue(mixed["result"]["isError"])
+            self.assertEqual(set(rendered), {"markdown", "count", "scope", "target"})
 
-    def test_cli_publish_accepts_plugin_id_without_leaking_exact_entries(self):
-        self.remember(title="Exact must stay out", scope="plugin", target="test-plugin")
-        self.remember(title="Included plugin memory", scope="plugin", match_mode="plugin_id", plugin_id="test-plugin")
+    def test_mcp_schemas_keep_all_tools_and_only_exact_target_fields(self):
+        self.assertEqual(len(TOOLS), 18)
+        self.assertIn("memory_plugins", {item["name"] for item in TOOLS})
+        schema = json.dumps([item["inputSchema"] for item in TOOLS])
+        self.assertNotIn("match_mode", schema)
+        self.assertNotIn("plugin_id", schema)
+        refresh = next(item for item in TOOLS if item["name"] == "memory_refresh")
+        self.assertEqual(refresh["inputSchema"]["properties"]["contexts"]["items"]["required"],
+                         ["scope", "target"])
+
+    def test_removed_matching_parameters_are_errors_without_mutation(self):
+        entry = self.remember(title="Plugin rule", scope="plugin", target="test-plugin")
+        original = self.store.export_data()
+        original_status = self.store.application_status()
+        for field, value in (("match_mode", "exact"), ("plugin_id", "test-plugin")):
+            cases = (
+                ("memory_search", {"scope": "plugin", "target": "test-plugin", field: value}),
+                ("memory_render", {"scope": "plugin", "target": "test-plugin", field: value}),
+                ("memory_create", {"title": "Rejected", "content": "Do not save", "category_id": self.category,
+                                   "scope": "plugin", "target": "test-plugin", field: value}),
+                ("memory_update", {"id": entry["id"], "patch": {field: value}}),
+                ("memory_refresh", {"contexts": [{"scope": "plugin", "target": "test-plugin", field: value}]}),
+            )
+            for name, arguments in cases:
+                with self.subTest(field=field, tool=name):
+                    response = rpc_response(self.store, {"jsonrpc": "2.0", "id": 4, "method": "tools/call",
+                        "params": {"name": name, "arguments": arguments}})
+                    self.assertTrue(response["result"].get("isError"), response)
+                    self.assertEqual(self.store.export_data(), original)
+                    self.assertEqual(self.store.application_status(), original_status)
+        with self.assertRaises(StoreError):
+            dispatch(self.store, "memory_refresh", {"contexts": [{"scope": "plugin"}]})
+        with self.assertRaises(StoreError):
+            dispatch(self.store, "memory_render", {"scope": "plugin", "plugin_id": "test-plugin"})
+
+    def test_cli_publish_uses_only_exact_scope_and_target(self):
+        self.remember(title="Included plugin memory", scope="plugin", target="test-plugin")
+        self.remember(title="Other plugin must stay out", scope="plugin", target="test-plugin-tools")
+        self.remember(title="Display name must stay out", scope="plugin", target="Test Plugin")
+        self.remember(title="Other scope must stay out", scope="project", target="test-plugin")
         path = self.root / "AGENTS.md"
-        run = subprocess.run([sys.executable, str(Path(__file__).resolve().parent.parent / "run.py"),
+        command = [sys.executable, str(Path(__file__).resolve().parent.parent / "run.py"),
             "--db", str(self.root / "memory.sqlite3"), "publish", "--file", str(path),
-            "--scope", "plugin", "--match-mode", "plugin_id", "--plugin-id", "test-plugin"],
+            "--scope", "plugin", "--target", "test-plugin"]
+        run = subprocess.run(command,
             capture_output=True, text=True, encoding="utf-8", timeout=15)
         self.assertEqual(run.returncode, 0, run.stderr)
         preview = json.loads(run.stdout)
         self.assertFalse(preview["applied"])
         self.assertEqual(preview["count"], 1)
         self.assertIn("Included plugin memory", preview["content"])
-        self.assertNotIn("Exact must stay out", preview["content"])
+        self.assertNotIn("must stay out", preview["content"])
         self.assertFalse(path.exists())
+        for option, value in (("--match-mode", "exact"), ("--plugin-id", "test-plugin")):
+            rejected = subprocess.run(command + [option, value], capture_output=True,
+                                      text=True, encoding="utf-8", timeout=15)
+            self.assertEqual(rejected.returncode, 2, rejected.stderr)
+            self.assertIn("unrecognized arguments", rejected.stderr)
+            self.assertFalse(path.exists())
+
+    def test_render_normalizes_global_target_and_rejects_missing_non_global_target(self):
+        self.remember(title="Global rule")
+        self.remember(title="Plugin rule", scope="plugin", target="test-plugin")
+        result = dispatch(self.store, "memory_render", {"scope": "global", "target": "ignored-for-global"})
+        self.assertEqual(result["target"], "")
+        self.assertEqual(result["count"], 1)
+        for scope in ("project", "skill", "plugin"):
+            with self.subTest(scope=scope), self.assertRaises(StoreError):
+                dispatch(self.store, "memory_render", {"scope": scope, "target": " "})
 
     def test_publish_preserves_surrounding_text_and_rejects_stale_hash(self):
         self.remember()
@@ -127,6 +177,16 @@ class InterfaceTests(unittest.TestCase):
         response = connection.getresponse()
         self.assertEqual(response.status, 403)
         response.read()
+        self.remember(title="Plugin rule", scope="plugin", target="test-plugin")
+        for legacy_field, value in (("match_mode", "exact"), ("plugin_id", "test-plugin")):
+            connection.request("POST", "/api/render", json.dumps({
+                "scope": "plugin", "target": "test-plugin", legacy_field: value,
+            }), {"Content-Type": "application/json"})
+            response = connection.getresponse()
+            self.assertEqual(response.status, 400)
+            payload = json.loads(response.read())
+            self.assertIn(legacy_field, payload["error"])
+            self.assertNotIn("markdown", payload)
 
 
 if __name__ == "__main__":

@@ -10,7 +10,7 @@ from unittest import mock
 from http.server import ThreadingHTTPServer
 
 from memory_manager.app import dispatch, handler_for, rpc_response
-from memory_manager.onboarding import BEGIN_READER, END_READER, READER_RULE, setup_global_rule
+from memory_manager.onboarding import BEGIN_READER, END_READER, FIRST_USE_PROMPT, READER_RULE, REFRESH_PROMPT, setup_global_rule
 from memory_manager.store import Store, StoreError
 
 
@@ -31,8 +31,11 @@ class OnboardingTests(unittest.TestCase):
         preview = self.setup()
         self.assertFalse(preview["applied"])
         self.assertEqual(preview["rule"], READER_RULE)
-        for requirement in ("memory_status", "memory_refresh", "plugin_id", "无需重装插件", "memory_setup", "明确同意", "其他聊天"):
+        for requirement in ("memory_status", "memory_refresh", "scope 和 target 原值精确匹配", "无需重装插件", "memory_setup", "明确同意", "其他聊天"):
             self.assertIn(requirement, preview["rule"])
+        for text in (preview["rule"], FIRST_USE_PROMPT, REFRESH_PROMPT):
+            self.assertNotIn("plugin_id", text)
+            self.assertNotIn("插件标识匹配", text)
         self.assertEqual(preview["sha256"], hashlib.sha256(b"").hexdigest())
         self.assertFalse(self.home.exists())
         self.assertEqual(self.store.application_status()["onboarding_decision"], "pending")

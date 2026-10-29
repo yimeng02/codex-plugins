@@ -7,10 +7,10 @@ const model = {
   editingId: null, draft: false, dirty: false, busy: false, loaded: false,
   categoryEditingId: null, history: [], historyEntryId: null, historyVersion: null,
   markdown: '', markdownScope: 'global',
-  plugins: [], pluginsAvailable: false, application: null, statusAvailable: false, statusPolling: false,
+  application: null, statusAvailable: false, statusPolling: false,
 };
 
-const refreshCommand = '使用 codex-memory-manager:memory-manager，调用 memory_refresh，重新读取全局启用记忆，并根据本任务及记忆保存的匹配方式，读取相关项目、技能和插件记忆（原关联目标精确匹配或插件标识匹配）。在当前聊天应用相关规则，并说明实际读取的资料库版本。其他聊天需要各自重新读取。';
+const refreshCommand = '使用 codex-memory-manager:memory-manager，调用 memory_refresh，重新读取全局启用记忆，并按保存的适用范围和关联目标精确检索本任务相关的项目、技能和插件记忆。在当前聊天应用相关规则，并说明实际读取的资料库版本。其他聊天需要各自重新读取。';
 
 function node(tag, className, text) {
   const result = document.createElement(tag);
@@ -114,52 +114,10 @@ async function copyCommand(command, message) {
   }
 }
 
-function fillPluginSelect(kind) {
-  const select = $(`${kind}-plugin`);
-  const fragment = document.createDocumentFragment();
-  const manual = node('option', '', '手动输入插件标识…');
-  manual.value = '';
-  fragment.append(manual);
-  model.plugins.forEach((plugin) => {
-    const option = node('option', '', plugin.display_name && plugin.display_name !== plugin.id ? `${plugin.display_name} · ${plugin.id}` : plugin.id);
-    option.value = plugin.id;
-    fragment.append(option);
-  });
-  select.replaceChildren(fragment);
-  const pluginId = $(`${kind}-plugin-id`).value.trim();
-  select.value = model.plugins.some((plugin) => plugin.id === pluginId) ? pluginId : '';
-  $(`${kind}-plugin-hint`).textContent = model.pluginsAvailable ? '列表来自本机插件缓存；选择后使用准确标识，也可手动填写未安装的插件标识。' : '暂时无法读取本机插件列表，可在关联目标中手动填写准确插件标识。';
-}
-
 function matchingHint(scope) {
   if (scope === 'global') return '全局记忆无需填写目标。';
   if (scope !== 'plugin') return `请填写${scope === 'project' ? '完整项目路径' : '准确 Skill 标识'}；读取和导出时按关联目标精确匹配。`;
-  return '按填写的关联目标文本精确匹配，保留原有规则。也可切换为独立的“插件标识匹配”。';
-}
-
-function matchMode(kind) {
-  return $(`${kind}-scope`).value === 'plugin' && $(`${kind}-match-mode`).value === 'plugin_id' ? 'plugin_id' : 'exact';
-}
-
-function pluginIdHint(pluginId) {
-  if (!pluginId || model.plugins.some((plugin) => plugin.id === pluginId)) return '按准确插件标识匹配，未安装的插件也可手动填写。';
-  return '此标识不在本机缓存列表中，仍可手动使用。请确认填写的是准确插件标识。';
-}
-
-async function loadPlugins() {
-  try {
-    const result = await api('/api/plugins');
-    if (!Array.isArray(result?.plugins)) throw new Error('invalid plugin list');
-    const seen = new Set();
-    model.plugins = result.plugins.filter((plugin) => {
-      if (!plugin || typeof plugin.id !== 'string' || !plugin.id.trim() || seen.has(plugin.id)) return false;
-      seen.add(plugin.id);
-      return true;
-    }).map((plugin) => ({ id: plugin.id, display_name: typeof plugin.display_name === 'string' ? plugin.display_name : plugin.id }));
-    model.pluginsAvailable = true;
-  } catch { model.pluginsAvailable = false; }
-  targetHint();
-  renderTargetHint(false);
+  return '按保存的插件关联目标文本精确匹配；读取和导出时请使用相同文本。';
 }
 
 async function mutate(action) {
@@ -317,7 +275,7 @@ function renderList() {
     titleCell.append(titleButton, subtitle);
     const scopeCell = node('td');
     const scopePill = node('span', `scope-pill ${scopeNames[entry.scope] ? entry.scope : ''}`, scopeNames[entry.scope] || entry.scope || '全局');
-    scopePill.title = entry.match_mode === 'plugin_id' ? `插件标识匹配：${entry.plugin_id || ''}` : `原精确匹配${entry.target ? `：${entry.target}` : ''}`;
+    scopePill.title = entry.target ? `关联目标：${entry.target}` : '全局记忆';
     scopeCell.append(scopePill);
     const statusCell = node('td');
     statusCell.append(node('span', `state-pill${entry.enabled ? ' enabled' : ''}`, entry.enabled ? '已启用' : '已停用'));
@@ -381,22 +339,10 @@ function targetHint() {
   const scope = $('entry-scope').value;
   const global = scope === 'global';
   const deleted = isDeleted(currentEntry() || {});
-  if (scope !== 'plugin') $('entry-match-mode').value = 'exact';
-  const pluginMode = matchMode('entry') === 'plugin_id';
-  $('entry-match-mode').querySelector('option[value="plugin_id"]').disabled = scope !== 'plugin';
-  $('entry-match-mode').disabled = deleted;
-  $('match-mode-hint').textContent = scope === 'plugin' ? '二选一：沿用原关联目标精确匹配，或使用独立的插件标识匹配。' : '当前范围使用原精确匹配；插件标识匹配仅适用于插件范围。';
-  $('entry-target-field').hidden = pluginMode;
-  $('entry-target').disabled = global || pluginMode || deleted;
-  $('entry-target').required = !global && !pluginMode;
-  $('entry-plugin-picker').hidden = !pluginMode;
-  fillPluginSelect('entry');
-  $('entry-plugin').disabled = !pluginMode || deleted;
-  $('entry-plugin-id').disabled = !pluginMode || deleted;
-  $('entry-plugin-id').required = pluginMode;
-  $('entry-plugin-id-hint').textContent = pluginIdHint($('entry-plugin-id').value.trim());
+  $('entry-target').disabled = global || deleted;
+  $('entry-target').required = !global;
   $('target-hint').textContent = matchingHint(scope);
-  $('entry-target').placeholder = scope === 'plugin' ? '原关联目标文本，例如插件显示名称' : scope === 'skill' ? '例如：android-engineering-ops:android-patch-capture' : '完整项目路径';
+  $('entry-target').placeholder = scope === 'plugin' ? '插件关联目标文本' : scope === 'skill' ? '例如：android-engineering-ops:android-patch-capture' : '完整项目路径';
 }
 
 function openEntry(entry, force = false) {
@@ -411,8 +357,6 @@ function openEntry(entry, force = false) {
   $('entry-title').value = entry?.title || '';
   $('entry-content').value = entry?.content || '';
   $('entry-scope').value = entry?.scope || 'global';
-  $('entry-match-mode').value = entry?.match_mode || 'exact';
-  $('entry-plugin-id').value = entry?.plugin_id || '';
   $('entry-target').value = entry?.target || '';
   $('entry-priority').value = entry?.priority ?? 50;
   $('entry-tags').value = Array.isArray(entry?.tags) ? entry.tags.join(', ') : '';
@@ -444,12 +388,10 @@ function closeEditor(force = false) {
 }
 
 function entryPayload() {
-  const mode = matchMode('entry');
   return {
     title: $('entry-title').value.trim(), content: $('entry-content').value.trim(),
     category_id: $('entry-category').value, scope: $('entry-scope').value,
-    match_mode: mode, plugin_id: mode === 'plugin_id' ? $('entry-plugin-id').value.trim() : '',
-    target: $('entry-scope').value === 'global' || mode === 'plugin_id' ? '' : $('entry-target').value.trim(),
+    target: $('entry-scope').value === 'global' ? '' : $('entry-target').value.trim(),
     priority: Number($('entry-priority').value), enabled: $('entry-enabled').checked,
     tags: [...new Set($('entry-tags').value.split(/[,，]/).map((tag) => tag.trim()).filter(Boolean))],
   };
@@ -460,8 +402,7 @@ function saveEntry(event) {
   const payload = entryPayload();
   if (!payload.title || !payload.content) return notice('标题和规则正文不能为空。', true);
   if (!payload.category_id) return notice('请先新增分类，再保存记忆。', true);
-  if (payload.match_mode === 'plugin_id' && !payload.plugin_id) return notice('请选择或手动填写准确插件标识。', true);
-  if (payload.match_mode === 'exact' && payload.scope !== 'global' && !payload.target) return notice('请填写项目、Skill 或插件的关联目标。', true);
+  if (payload.scope !== 'global' && !payload.target) return notice('请填写项目、Skill 或插件的关联目标。', true);
   mutate(async () => {
     const previousId = model.editingId;
     const result = await api(previousId ? `/api/entries/${encodeURIComponent(previousId)}` : '/api/entries', { method: previousId ? 'PATCH' : 'POST', body: payload });
@@ -578,20 +519,10 @@ function importJSON(event) {
 function renderTargetHint(clearPreview = true) {
   const scope = $('render-scope').value;
   const global = scope === 'global';
-  if (scope !== 'plugin') $('render-match-mode').value = 'exact';
-  const pluginMode = matchMode('render') === 'plugin_id';
-  $('render-match-mode').querySelector('option[value="plugin_id"]').disabled = scope !== 'plugin';
-  $('render-target-field').hidden = pluginMode;
-  $('render-target').disabled = global || pluginMode;
-  $('render-target').required = !global && !pluginMode;
-  $('render-plugin-picker').hidden = !pluginMode;
-  fillPluginSelect('render');
-  $('render-plugin').disabled = !pluginMode;
-  $('render-plugin-id').disabled = !pluginMode;
-  $('render-plugin-id').required = pluginMode;
-  $('render-plugin-id-hint').textContent = pluginIdHint($('render-plugin-id').value.trim());
-  $('render-target-hint').textContent = pluginMode ? '只导出使用插件标识匹配的记忆；原精确匹配记忆请切换匹配方式后按关联目标导出。' : matchingHint(scope);
-  $('render-target').placeholder = scope === 'plugin' ? '原关联目标文本，例如插件显示名称' : scope === 'skill' ? '准确 Skill 标识' : '完整项目路径';
+  $('render-target').disabled = global;
+  $('render-target').required = !global;
+  $('render-target-hint').textContent = matchingHint(scope);
+  $('render-target').placeholder = scope === 'plugin' ? '插件关联目标文本' : scope === 'skill' ? '准确 Skill 标识' : '完整项目路径';
   if (clearPreview) invalidatePreview();
 }
 
@@ -606,8 +537,6 @@ function invalidatePreview() {
 function openRender() {
   const entry = currentEntry();
   $('render-scope').value = entry?.scope || $('scope-filter').value || 'global';
-  $('render-match-mode').value = entry?.match_mode || 'exact';
-  $('render-plugin-id').value = entry?.plugin_id || '';
   $('render-target').value = entry?.target || '';
   renderTargetHint();
   $('render-dialog').showModal();
@@ -615,11 +544,9 @@ function openRender() {
 
 function renderPayload() {
   const scope = $('render-scope').value;
-  const mode = matchMode('render');
   return {
-    scope, match_mode: mode,
-    target: scope === 'global' || mode === 'plugin_id' ? '' : $('render-target').value.trim(),
-    plugin_id: mode === 'plugin_id' ? $('render-plugin-id').value.trim() : '',
+    scope,
+    target: scope === 'global' ? '' : $('render-target').value.trim(),
   };
 }
 
@@ -627,13 +554,13 @@ function renderMarkdown(event) {
   event.preventDefault();
   run(async () => {
     const payload = renderPayload();
-    const { scope, target, match_mode: mode, plugin_id: pluginId } = payload;
+    const { scope, target } = payload;
     const result = await api('/api/render', { method: 'POST', body: payload });
     if (JSON.stringify(payload) !== JSON.stringify(renderPayload())) return;
     model.markdown = result.markdown || '';
     model.markdownScope = scope;
     $('render-preview').value = model.markdown;
-    $('render-summary').textContent = `${scopeNames[scope]} · ${mode === 'plugin_id' ? '插件标识匹配' : '原精确匹配'}${pluginId || target ? ` · ${pluginId || target}` : ''} · ${result.count ?? 0} 条启用记忆`;
+    $('render-summary').textContent = `${scopeNames[scope]}${target ? ` · ${target}` : ''} · ${result.count ?? 0} 条启用记忆`;
     $('copy-markdown').disabled = !model.markdown;
     $('download-markdown').disabled = !model.markdown;
   });
@@ -667,7 +594,7 @@ async function showHistory() {
         model.historyVersion = version.version_id || version.id;
         document.querySelectorAll('.history-item').forEach((item) => item.classList.toggle('active', item === button));
         const snapshot = version.entry || version.snapshot || {};
-        $('history-preview').textContent = [snapshot.title || '无标题', '', snapshot.content || '', '', `分类：${categoryName(snapshot.category_id)}`, `范围：${scopeNames[snapshot.scope] || snapshot.scope || '全局'}`, `匹配方式：${snapshot.match_mode === 'plugin_id' ? '插件标识匹配' : '原精确匹配'}`, `目标：${snapshot.match_mode === 'plugin_id' ? snapshot.plugin_id || '—' : snapshot.target || '—'}`, `标签：${Array.isArray(snapshot.tags) ? snapshot.tags.join(', ') : ''}`, `优先级：${snapshot.priority ?? 50}`, `状态：${snapshot.enabled ? '启用' : '停用'}`].join('\n');
+        $('history-preview').textContent = [snapshot.title || '无标题', '', snapshot.content || '', '', `分类：${categoryName(snapshot.category_id)}`, `范围：${scopeNames[snapshot.scope] || snapshot.scope || '全局'}`, `目标：${snapshot.target || snapshot.plugin_id || '—'}`, `标签：${Array.isArray(snapshot.tags) ? snapshot.tags.join(', ') : ''}`, `优先级：${snapshot.priority ?? 50}`, `状态：${snapshot.enabled ? '启用' : '停用'}`].join('\n');
         updateWriteState();
       });
       fragment.append(button);
@@ -703,19 +630,7 @@ $('editor-form').addEventListener('change', (event) => {
   if (event.target.matches('input, textarea, select')) setDirty(true);
 });
 $('entry-scope').addEventListener('change', targetHint);
-$('entry-match-mode').addEventListener('change', targetHint);
 $('entry-target').addEventListener('input', targetHint);
-$('entry-plugin-id').addEventListener('input', targetHint);
-$('entry-plugin').addEventListener('change', () => {
-  if ($('entry-plugin').value) {
-    $('entry-plugin-id').value = $('entry-plugin').value;
-    targetHint();
-  } else {
-    $('entry-plugin-id-hint').textContent = '请在插件标识中手动填写，未安装的插件也可使用。';
-    $('entry-plugin-id').focus();
-  }
-  setDirty(true);
-});
 ['search', 'scope-filter', 'status-filter'].forEach((id) => $(id).addEventListener(id === 'search' ? 'input' : 'change', () => { model.selected.clear(); renderList(); }));
 $('select-all').addEventListener('change', () => { model.selected = new Set($('select-all').checked ? visibleEntries().map((entry) => entry.id) : []); renderSelection(); });
 $('clear-selection').addEventListener('click', () => { model.selected.clear(); renderSelection(); });
@@ -731,19 +646,7 @@ $('import-button').addEventListener('click', () => $('import-file').click());
 $('import-file').addEventListener('change', importJSON);
 $('render-button').addEventListener('click', openRender);
 $('render-scope').addEventListener('change', () => renderTargetHint());
-$('render-match-mode').addEventListener('change', () => renderTargetHint());
 $('render-target').addEventListener('input', () => renderTargetHint());
-$('render-plugin-id').addEventListener('input', () => renderTargetHint());
-$('render-plugin').addEventListener('change', () => {
-  if ($('render-plugin').value) {
-    $('render-plugin-id').value = $('render-plugin').value;
-    renderTargetHint();
-  } else {
-    $('render-plugin-id-hint').textContent = '请在插件标识中手动填写，未安装的插件也可使用。';
-    invalidatePreview();
-    $('render-plugin-id').focus();
-  }
-});
 $('render-form').addEventListener('submit', renderMarkdown);
 $('download-markdown').addEventListener('click', () => download(model.markdown, model.markdownScope === 'skill' ? 'SKILL.rules.md' : 'AGENTS.rules.md', 'text/markdown;charset=utf-8'));
 $('copy-markdown').addEventListener('click', () => run(async () => {
@@ -767,7 +670,7 @@ window.addEventListener('beforeunload', (event) => {
 });
 
 run(async () => {
-  try { await Promise.all([refresh(), loadPlugins()]); }
+  try { await refresh(); }
   catch (error) {
     $('storage-status').textContent = '连接失败，请检查本地服务';
     $('result-summary').textContent = '资料库尚未加载';
