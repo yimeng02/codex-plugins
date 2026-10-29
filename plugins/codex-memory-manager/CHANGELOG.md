@@ -1,0 +1,41 @@
+# 更新记录
+
+## 0.1.4 — 2026-10-29
+
+- 提供 GitHub 个人市场来源 `yimeng02/codex-plugins`，沿用仓库既有的 `yimeng02` 市场和 `plugins/` 布局；本机安装器仍保留独立 `personal-memory-tools` 入口。
+- 修复 portable MCP `command` 使用 Python 绝对路径的格式错误；本机安装器改用裸命令和子进程 PATH，旧格式独立保留绝对运行时。
+- 在真实握手前检查 Codex portable MCP 配置规则，拦截旧自检会漏报的 command、cwd、保留环境变量和字段错误。
+- WSL 当前用户默认库不存在时，可复用 CODEX_HOME 父目录中已有的记忆库；明确指定的数据目录仍优先。
+- 统一版本说明，新增个人市场安装与更新说明及跨平台 CI。安装、独立 MCP 自检和桌面会话工具加载分别报告。
+
+详情见 [GitHub 市场说明](docs/GITHUB-MARKETPLACE.md) 和 [客户端加载说明](docs/CLIENT_LOADING.md)。
+
+## 0.1.3
+
+新增兼容布局、技能显示元数据、实际安装缓存中的 MCP 自检和诊断入口，见 [0.1.3 记录](docs/RELEASE-0.1.3.md)。
+
+## 0.1.2
+
+新增 PATH 外的 CLI 检测与官方自动补齐，见 [0.1.2 更新记录](docs/RELEASE-0.1.2.md)。
+
+## 0.1.1 — 2026-10-28
+
+- 新增 `install.py` 自动安装核心及 `install.cmd`、`install.ps1`、`install.sh` 启动入口。
+- 安装前检查 Python 3.10+、Codex CLI 插件命令支持及项目单元测试。
+- 使用 Codex 官方本地市场和插件命令完成注册、安装与启用状态检查。
+- 将插件部署到独立数据目录中的稳定副本，固定 MCP 使用的 Python 路径，并让页面与插件共用记忆库。
+- 支持 `--check`、`--codex`、`--data-dir` 和 `--reinstall`；更新时保留记忆数据并备份旧代码。
+- 生成 `installation.json` 安装记录及 `open-manager.py` 页面启动入口。
+- 更新 README，并新增安装、升级和排查说明。
+
+验证状态：本次编辑环境无法创建终端进程，尚未运行单元测试、自动安装及 Codex 客户端加载验收。
+
+## 0.1.0
+
+- 提供本地中文记忆管理页面与 Codex 插件首版源码。
+- 支持自定义分类、条目编辑、作用域、标签、搜索及批量管理。
+- 支持历史版本、JSON 导入导出，以及按需检索和规则发布。
+最新安装修复：[0.1.2 更新记录](docs/RELEASE-0.1.2.md)。新增 PATH 外的 CLI 检测与官方自动补齐，修复“未找到 Codex CLI”直接退出的问题。
+
+客户端加载与验收更新：[0.1.3 记录](docs/RELEASE-0.1.3.md)。新增兼容布局、技能显示元数据、真实 MCP 自检和诊断入口。
+

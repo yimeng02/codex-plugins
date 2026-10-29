@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "memory-manager": {
+      "command": "python3",
+      "args": ["run.py", "mcp"],
+      "cwd": "."
+    }
+  }
+}

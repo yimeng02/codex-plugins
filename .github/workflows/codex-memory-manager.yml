@@ -1,0 +1,44 @@
+name: Codex memory manager checks
+
+on:
+  push:
+    paths:
+      - plugins/codex-memory-manager/**
+      - .github/workflows/codex-memory-manager.yml
+  pull_request:
+    paths:
+      - plugins/codex-memory-manager/**
+      - .github/workflows/codex-memory-manager.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unittest:
+    name: ${{ matrix.os }} / Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.10', '3.13']
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Run standard-library tests
+        working-directory: plugins/codex-memory-manager
+        env:
+          CODEX_HOME: ${{ runner.temp }}/memory-manager-tests/codex-home
+          CODEX_MEMORY_HOME: ${{ runner.temp }}/memory-manager-tests/data
+        run: python -m unittest discover -s tests -v

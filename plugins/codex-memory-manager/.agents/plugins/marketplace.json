@@ -1,0 +1,20 @@
+{
+  "name": "personal-memory-tools",
+  "interface": {
+    "displayName": "个人规则与记忆工具"
+  },
+  "plugins": [
+    {
+      "name": "codex-memory-manager",
+      "source": {
+        "source": "local",
+        "path": "./"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

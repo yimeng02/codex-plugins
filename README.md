@@ -34,3 +34,18 @@ codex plugin add zentao-member-ops@yimeng02
 完整安装、首次配置、使用方式、安全模型及故障排查请参阅[插件说明](plugins/zentao-member-ops/README.md)，版本记录见[更新日志](plugins/zentao-member-ops/CHANGELOG.md)。
 
 `zentao-member-ops` 的权威源码位于本仓库的 [`plugins/zentao-member-ops`](plugins/zentao-member-ops)；原独立仓库已归档，不再作为源码或市场源。
+
+## Codex 规则与记忆管理器
+
+当前版本：`0.1.4`。提供中文本地管理页面和 MCP 工具，可自定义分类、编辑记忆、批量启停或移动、回收恢复、查看历史及导入导出。数据保存在使用者本机，插件升级时保留。
+
+在 Codex 插件管理中选择 **Yimeng02** 市场并安装 **规则与记忆管理器**，或运行：
+
+```bash
+codex plugin marketplace upgrade yimeng02
+codex plugin add codex-memory-manager@yimeng02
+```
+
+当前 GitHub 版本需要 agent 环境 PATH 中有 Python 3.10+ 的 `python3`；Windows 与 WSL 的运行环境应分别核对。安装后在本地新聊天中调用 `codex-memory-manager:memory-manager`。
+
+[插件说明](plugins/codex-memory-manager/README.md) · [个人市场安装与更新](plugins/codex-memory-manager/docs/GITHUB-MARKETPLACE.md) · [加载故障排查](plugins/codex-memory-manager/docs/CLIENT_LOADING.md) · [更新记录](plugins/codex-memory-manager/CHANGELOG.md)

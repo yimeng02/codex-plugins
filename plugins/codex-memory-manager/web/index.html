@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Codex 分类记忆管理器</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">▦</span><div><h1>分类记忆管理器</h1><p>Codex · Skills · 插件</p></div><span class="local-badge">本地存储</span></div>
+    <div class="header-actions"><button id="import-button" class="button quiet">导入 JSON</button><button id="export-button" class="button quiet">导出 JSON</button><button id="render-button" class="button outlined">导出规则 ↗</button></div>
+  </header>
+  <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+  <main class="workspace">
+    <aside class="sidebar" aria-label="记忆分类">
+      <div class="sidebar-heading"><span>资料库</span><span class="eyebrow">LIBRARY</span></div>
+      <nav id="library-nav" class="library-nav"></nav>
+      <div class="sidebar-heading category-heading"><span>分类</span><button id="add-category" class="icon-button" title="新增分类" aria-label="新增分类">＋</button></div>
+      <nav id="category-list" class="category-list" aria-label="分类列表"></nav>
+      <div id="category-actions" class="category-actions" hidden><button id="edit-category" class="text-button">编辑分类</button><button id="delete-category" class="text-button danger">删除分类</button></div>
+      <div class="sidebar-footer"><span class="status-dot"></span><span id="storage-status">正在连接本地资料库…</span><p>在这里整理规则，再导出到适用位置。</p></div>
+    </aside>
+    <section class="entry-panel" aria-labelledby="list-heading">
+      <div class="panel-heading"><div><div class="eyebrow">YOUR KNOWLEDGE, ORGANIZED</div><h2 id="list-heading">全部记忆 <span id="list-count" class="count-badge">0</span></h2><p id="list-description">将反复提醒的事，变成可维护的规则。</p></div><button id="new-entry" class="button primary">＋ 新增记忆</button></div>
+      <div class="filters"><label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="搜索标题、正文、标签…" aria-label="搜索记忆"></label><label class="sr-only" for="scope-filter">适用范围</label><select id="scope-filter"><option value="">所有范围</option><option value="global">全局</option><option value="project">项目</option><option value="skill">Skill</option><option value="plugin">插件</option></select><label class="sr-only" for="status-filter">启用状态</label><select id="status-filter"><option value="">所有状态</option><option value="enabled">已启用</option><option value="disabled">已停用</option></select></div>
+      <div id="bulk-bar" class="bulk-bar" hidden><span id="selection-count">已选 0 项</span><div class="bulk-controls"><button id="bulk-enable" class="text-button" data-write>启用</button><button id="bulk-disable" class="text-button" data-write>停用</button><label class="sr-only" for="bulk-category">移动到分类</label><select id="bulk-category" aria-label="移动到分类"><option value="">移动到分类…</option></select><button id="bulk-move" class="text-button" data-write>移动</button><button id="bulk-restore" class="text-button" data-write hidden>恢复</button><button id="bulk-delete" class="text-button danger" data-write>移入回收站</button><button id="clear-selection" class="text-button">取消选择</button></div></div>
+      <div class="table-scroll"><table class="entry-table"><thead><tr><th class="check-cell"><input id="select-all" type="checkbox" aria-label="选中当前筛选的所有记忆"></th><th>记忆 / 分类</th><th>范围</th><th>状态</th><th class="priority-column">优先级</th><th class="updated-column">更新于</th></tr></thead><tbody id="entry-list"></tbody></table><div id="list-empty" class="empty-state" hidden><div class="empty-symbol" aria-hidden="true">▤</div><h3 id="empty-title">还没有记忆</h3><p id="empty-description">新增第一条规则，或导入已有资料。</p><button id="empty-new-entry" class="button outlined">新增记忆</button></div></div>
+      <div class="list-footer"><span id="result-summary">正在加载…</span><span>内容保存在本机 · JSON 可迁移备份</span></div>
+    </section>
+    <aside class="editor-panel" aria-label="记忆编辑器">
+      <div id="editor-placeholder" class="editor-placeholder"><div class="placeholder-art" aria-hidden="true"><i></i><i></i><i></i><span>✦</span></div><h2>每条规则，都清晰可见。</h2><p>选择一条记忆查看和编辑，<br>或创建一条新的记忆。</p><button id="placeholder-new-entry" class="button outlined">＋ 新增记忆</button><div class="usage-note"><strong>怎样让记忆生效？</strong><p>“启用”决定是否参与导出。将导出的 Markdown 放入对应 AGENTS.md 或 SKILL.md 后，由 Codex 按加载规则读取。</p></div></div>
+      <form id="editor-form" hidden>
+        <div class="editor-heading"><div><span class="eyebrow" id="editor-kind">EDIT MEMORY</span><h2 id="editor-heading">编辑记忆</h2></div><button id="close-editor" type="button" class="icon-button" aria-label="关闭编辑器">×</button></div>
+        <div id="deleted-banner" class="deleted-banner" hidden>这条记忆在回收站中。恢复后即可编辑。</div>
+        <div class="editor-fields">
+          <label class="field">标题 <span class="required">*</span><input id="entry-title" name="title" required maxlength="200" placeholder="例如：修改完成后先验证再汇报"></label>
+          <label class="field">规则正文 <span class="required">*</span><textarea id="entry-content" name="content" required rows="9" placeholder="写清楚触发场景、执行动作、通过条件与异常处理。支持 Markdown。"></textarea><span class="field-hint">描述可执行的动作，并写清楚验收证据。</span></label>
+          <label class="field">分类<select id="entry-category" name="category_id" required></select></label>
+          <div class="field-row"><label class="field">适用范围<select id="entry-scope" name="scope"><option value="global">全局</option><option value="project">项目</option><option value="skill">Skill</option><option value="plugin">插件</option></select></label><label class="field priority-field">优先级<input id="entry-priority" name="priority" type="number" min="0" max="100" step="1" value="50" required></label></div>
+          <label class="field">关联目标<input id="entry-target" name="target" maxlength="1000" placeholder="项目路径、Skill 或插件名称"><span id="target-hint" class="field-hint">全局记忆无需填写目标。</span></label>
+          <label class="field">标签<input id="entry-tags" name="tags" placeholder="验证, 沟通, 编译"><span class="field-hint">使用英文或中文逗号分隔。</span></label>
+          <label class="toggle-row"><span><strong>启用这条记忆</strong><small>启用后参与规则导出</small></span><input id="entry-enabled" name="enabled" type="checkbox" role="switch" checked></label>
+          <p id="entry-meta" class="entry-meta"></p>
+        </div>
+        <div class="editor-footer"><div class="editor-tools"><button id="history-button" type="button" class="text-button">历史版本</button><button id="delete-entry" type="button" class="text-button danger" data-write>移入回收站</button><button id="restore-entry" type="button" class="text-button" data-write hidden>恢复记忆</button></div><div class="save-row"><span id="save-status" class="save-status">所有更改已保存</span><button id="save-entry" type="submit" class="button primary" data-write>保存记忆</button></div></div>
+      </form>
+    </aside>
+  </main>
+  <dialog id="category-dialog" class="dialog small-dialog"><form id="category-form"><div class="dialog-header"><h2 id="category-dialog-title">新增分类</h2><button type="button" class="icon-button" data-close-dialog="category-dialog" aria-label="关闭">×</button></div><label class="field">分类名称<input id="category-name" required maxlength="100" placeholder="例如：构建与验证"></label><label class="field">上级分类<select id="category-parent"><option value="">无上级分类</option></select></label><div class="dialog-footer"><button type="button" class="button quiet" data-close-dialog="category-dialog">取消</button><button id="save-category" type="submit" class="button primary" data-write>保存分类</button></div></form></dialog>
+  <dialog id="render-dialog" class="dialog render-dialog"><div class="dialog-header"><div><h2>导出 Markdown 规则</h2><p>预览通过筛选的启用记忆，再保存到对应规则文件。</p></div><button class="icon-button" data-close-dialog="render-dialog" aria-label="关闭">×</button></div><form id="render-form"><div class="render-filters"><label class="field">适用范围<select id="render-scope"><option value="global">全局</option><option value="project">项目</option><option value="skill">Skill</option><option value="plugin">插件</option></select></label><label class="field grow">关联目标<input id="render-target" placeholder="项目路径、Skill 或插件名称"></label><button type="submit" class="button outlined">生成预览</button></div></form><div class="preview-heading"><span id="render-summary">请生成预览</span><span class="eyebrow">MARKDOWN</span></div><textarea id="render-preview" class="code-preview" readonly rows="15" aria-label="Markdown 规则预览" placeholder="生成的规则会显示在这里。"></textarea><p class="export-note">此操作只下载规则文件。写入实际 AGENTS.md / SKILL.md 前，请检查与现有内容的冲突。</p><div class="dialog-footer"><button id="copy-markdown" class="button quiet" disabled>复制内容</button><button id="download-markdown" class="button primary" disabled>下载 Markdown</button></div></dialog>
+  <dialog id="history-dialog" class="dialog history-dialog"><div class="dialog-header"><div><h2>历史版本</h2><p id="history-entry-title"></p></div><button class="icon-button" data-close-dialog="history-dialog" aria-label="关闭">×</button></div><div class="history-layout"><div id="history-list" class="history-list"></div><pre id="history-preview" class="code-preview history-preview">选择一个版本查看内容。</pre></div><div class="dialog-footer"><span id="history-status" class="field-hint"></span><button id="restore-version" class="button primary" data-write disabled>恢复此版本</button></div></dialog>
+  <input id="import-file" type="file" accept="application/json,.json" hidden>
+  <noscript><p class="notice error">此管理器需要 JavaScript 才能读取和编辑本地记忆。</p></noscript>
+</body>
+</html>
