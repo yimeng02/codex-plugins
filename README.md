@@ -37,7 +37,7 @@ codex plugin add zentao-member-ops@yimeng02
 
 ## Codex 规则与记忆管理器
 
-当前版本：`0.2.5`。提供中文本地管理页面和 MCP 工具，可自定义分类、编辑记忆、批量启停或移动、回收恢复、查看历史及导入导出。数据保存在使用者本机，插件升级时保留。
+当前版本：`0.2.6`。提供中文本地管理页面和 MCP 工具，可自定义分类、编辑记忆、批量启停或移动、回收恢复、查看历史及导入导出。数据保存在使用者本机，插件升级时保留。
 
 在 Codex 插件管理中选择 **Yimeng02** 市场并安装 **规则与记忆管理器**，或运行：
 
@@ -50,4 +50,4 @@ codex plugin add codex-memory-manager@yimeng02
 
 [插件说明](plugins/codex-memory-manager/README.md) · [个人市场安装与更新](plugins/codex-memory-manager/docs/GITHUB-MARKETPLACE.md) · [加载故障排查](plugins/codex-memory-manager/docs/CLIENT_LOADING.md) · [更新记录](plugins/codex-memory-manager/CHANGELOG.md)
 
-记忆管理器 0.2.5 补全首次使用指南，说明聊天与网页如何管理记忆。询问用法或管理网页时，返回可点击的实际页面链接及运行状态；已记录的全局规则选择不重复询问。[本版说明](plugins/codex-memory-manager/docs/RELEASE-0.2.5.md)。
+记忆管理器 0.2.6 在任务执行中的工具调用前后检查版本，有更新时为模型续行准备最新全局记忆；压缩后的 SessionStart 无条件重新加载。新增两个工具钩子需审核信任，保留原有资料库和规则。[本版说明](plugins/codex-memory-manager/docs/RELEASE-0.2.6.md)。

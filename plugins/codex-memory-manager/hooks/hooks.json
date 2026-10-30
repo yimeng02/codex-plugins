@@ -1,5 +1,5 @@
 {
-  "description": "在每个聊天启动时准备全局记忆，并在资料库更新后刷新；不访问历史聊天文件，不保存提示词。",
+  "description": "在启动与压缩恢复时准备全局记忆，并在用户消息及工具调用前后检查更新；不访问历史聊天文件，不保存提示词或工具输入输出。",
   "hooks": {
     "SessionStart": [
       {
@@ -11,6 +11,34 @@
             "timeout": 5,
             "additionalContextLimit": 0,
             "statusMessage": "加载全局记忆"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${PLUGIN_ROOT}/hooks/memory_context.py\"",
+            "commandWindows": "py -3 \"${PLUGIN_ROOT}/hooks/memory_context.py\"",
+            "timeout": 5,
+            "additionalContextLimit": 0,
+            "statusMessage": "工具执行前检查记忆更新"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${PLUGIN_ROOT}/hooks/memory_context.py\"",
+            "commandWindows": "py -3 \"${PLUGIN_ROOT}/hooks/memory_context.py\"",
+            "timeout": 5,
+            "additionalContextLimit": 0,
+            "statusMessage": "工具执行后检查记忆更新"
           }
         ]
       }

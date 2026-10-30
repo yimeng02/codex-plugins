@@ -128,7 +128,7 @@ Windows 与 WSL 通常拥有不同的用户目录和 Codex 配置。WSL 中安�
 
 安装器检查缓存中的技能、MCP 握手和只读调用；CLI 登记成功仍需在目标客户端验证。0.2.2 另通过隔离配置中的真实 Codex 宿主验证：审核测试钩子后，发送“你好”的首个模型请求已包含全局记忆，且未包含其他范围正文。测试使用本地模拟模型，不代表实际模型已遵循每条偏好。
 
-升级后完全退出并重启 Codex，按提示审核 `SessionStart` 和 `UserPromptSubmit`。CLI 可使用 `/hooks` 检查；未信任、被策略禁用或客户端不支持的钩子不会自动执行。原资料库继续使用，无需开启 Codex 内置记忆或改写全局 AGENTS。
+升级后完全退出并重启 Codex，按提示审核 `SessionStart`、`UserPromptSubmit`、`PreToolUse` 和 `PostToolUse`。0.2.6 新增的后两个钩子用于任务进行中的版本检查，旧钩子信任不能代替新增钩子的审核。CLI 可使用 `/hooks` 检查；未信任、被策略禁用或客户端不支持的钩子不会自动执行。原资料库继续使用，无需开启 Codex 内置记忆或改写全局 AGENTS。压缩后通过 SessionStart(compact) 强制重新加载，工具检查点仅在版本变化时更新。
 > **0.1.2 安装修复：** 不再要求提前把 CLI 加入 PATH。安装器会查找桌面应用和常见用户安装位置；仍无可用 CLI 时，默认运行 OpenAI 官方安装器。`--check` 与新增的 `--no-bootstrap-cli` 不下载。本文旧版“需手动安装 CLI”或“不下载 Codex”的描述由此更新，详细步骤见 [CLI 找不到的修复说明](CLI_NOT_FOUND.md)。
 
 > **0.1.3 验收更新：** CLI 的 installed/enabled 不代表桌面会话工具已加载。新版增加兼容声明与实际安装缓存的 MCP 进程自检，并提供 `doctor.cmd` 检查旧版安装。步骤见[客户端加载说明](CLIENT_LOADING.md)。

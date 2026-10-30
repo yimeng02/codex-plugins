@@ -17,7 +17,7 @@ from . import __version__
 from .store import Store, StoreError
 
 
-EVENTS = {"SessionStart", "UserPromptSubmit"}
+EVENTS = {"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse"}
 MAX_INPUT_BYTES = 4 * 1024 * 1024
 MAX_CONTEXT_BYTES = 18_000
 RECEIPT_TABLE = """
@@ -100,7 +100,7 @@ def prepare_context(store, payload):
         raise StoreError("钩子输入必须是 JSON 对象")
     event = payload.get("hook_event_name")
     if event not in EVENTS:
-        raise StoreError("仅支持 SessionStart 和 UserPromptSubmit")
+        raise StoreError("仅支持 SessionStart、UserPromptSubmit、PreToolUse 和 PostToolUse")
     identifier = session_id(payload.get("session_id"))
     source = payload.get("source", "")
     if not isinstance(source, str) or len(source) > 64:
@@ -109,7 +109,11 @@ def prepare_context(store, payload):
         conn.execute(RECEIPT_TABLE)
         revision = int(conn.execute("SELECT value FROM metadata WHERE key='revision'").fetchone()[0])
         previous = conn.execute("SELECT * FROM session_loads WHERE session_id=?", (identifier,)).fetchone()
-        if (event == "UserPromptSubmit" and previous is not None
+        # SessionStart must always rebuild context, including source=compact:
+        # compaction can remove an earlier delivery without changing revision.
+        # Prompt/tool checkpoints only need a new delivery when the library or
+        # plugin version changes, or this chat has no preparation receipt yet.
+        if (event != "SessionStart" and previous is not None
                 and previous["revision"] == revision and previous["plugin_version"] == __version__):
             return None
         previous_ids = json.loads(previous["entry_ids"]) if previous is not None else []

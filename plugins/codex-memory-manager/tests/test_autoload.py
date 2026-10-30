@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 from memory_manager.app import dispatch
 from memory_manager.autoload import MAX_CONTEXT_BYTES, prepare_context, session_status
@@ -106,6 +107,85 @@ class AutoloadTests(unittest.TestCase):
         self.assertEqual(data["revision"], 2)
         self.assertEqual(data["global_entries"][0]["content"], "updated content")
         self.assertFalse(session_status(self.store, "chat-a")["needs_refresh"])
+
+    def test_running_task_refreshes_before_and_after_tools_without_a_user_message(self):
+        entry = self.create(content="before task")
+        prepare_context(self.store, self.payload())
+        before = self.store.snapshot()
+        for event, content in (("PreToolUse", "changed while model was working"),
+                               ("PostToolUse", "changed while command was running")):
+            with self.subTest(event=event):
+                self.assertIsNone(prepare_context(self.store, self.payload(event)))
+                self.store.entry_update(entry["id"], {"content": content})
+                run = self.hook_process(self.payload(event, tool_name="Bash",
+                    tool_input={"command": "DO_NOT_PERSIST_COMMAND"},
+                    tool_response="DO_NOT_PERSIST_RESULT"))
+                self.assertEqual(run.returncode, 0, run.stderr)
+                output = json.loads(run.stdout)
+                self.assertEqual(output["hookSpecificOutput"]["hookEventName"], event)
+                data = self.data(output)
+                self.assertEqual(data["global_entries"][0]["content"], content)
+                self.assertEqual(data["revision"], self.store.snapshot()["revision"])
+                self.assertNotIn("DO_NOT_PERSIST", run.stdout)
+                self.assertIsNone(prepare_context(self.store, self.payload(event)))
+                with closing(sqlite3.connect(self.database)) as conn:
+                    self.assertNotIn("DO_NOT_PERSIST", str(conn.execute("SELECT * FROM session_loads").fetchall()))
+        self.assertEqual(self.store.snapshot()["categories"], before["categories"])
+        self.assertEqual(len(self.store.history(entry["id"])), 3)
+
+    def test_tool_checkpoint_can_initialize_missing_chat_receipt(self):
+        self.create()
+        for event in ("PreToolUse", "PostToolUse"):
+            with self.subTest(event=event):
+                data = self.data(prepare_context(self.store, self.payload(event, identifier=event)))
+                self.assertEqual(data["revision"], 1)
+                self.assertEqual(data["event"], event)
+                self.assertEqual(session_status(self.store, event)["revision"], 1)
+
+    def test_tool_checkpoints_revoke_deleted_or_disabled_globals_during_task(self):
+        disabled, deleted = self.create(), self.create()
+        prepare_context(self.store, self.payload())
+        self.store.entry_update(disabled["id"], {"enabled": False})
+        self.store.entry_delete(deleted["id"])
+        data = self.data(prepare_context(self.store, self.payload("PostToolUse")))
+        self.assertEqual(data["global_entries"], [])
+        self.assertEqual(set(data["revoked_entry_ids"]), {disabled["id"], deleted["id"]})
+        self.assertIsNone(prepare_context(self.store, self.payload("PreToolUse")))
+
+    def test_same_revision_tool_and_prompt_checkpoints_do_not_repeat_delivery(self):
+        self.create()
+        prepare_context(self.store, self.payload())
+        receipt = session_status(self.store, "chat-a")
+        for event in ("PreToolUse", "PostToolUse", "UserPromptSubmit") * 3:
+            with self.subTest(event=event):
+                self.assertIsNone(prepare_context(self.store, self.payload(event)))
+                self.assertEqual(session_status(self.store, "chat-a"), receipt)
+
+    def test_compaction_reloads_unchanged_and_changed_libraries_for_immediate_continuation(self):
+        entry = self.create(content="before compact")
+        prepare_context(self.store, self.payload())
+        for trigger in ("manual", "auto"):
+            with self.subTest(trigger=trigger):
+                # Codex dispatches SessionStart(source=compact) after either
+                # compaction trigger and before the next model request.
+                output = prepare_context(self.store, self.payload(source="compact", trigger=trigger))
+                self.assertEqual(self.data(output)["global_entries"][0]["content"], "before compact")
+                self.assertEqual(self.data(output)["revision"], 1)
+                self.assertIsNone(prepare_context(self.store, self.payload("PreToolUse")))
+        self.store.entry_update(entry["id"], {"content": "updated during compaction"})
+        data = self.data(prepare_context(self.store, self.payload(source="compact")))
+        self.assertEqual(data["revision"], 2)
+        self.assertEqual(data["global_entries"][0]["content"], "updated during compaction")
+
+    def test_each_task_checkpoint_detects_a_plugin_upgrade_without_a_library_change(self):
+        self.create()
+        for event in ("PreToolUse", "PostToolUse"):
+            with self.subTest(event=event):
+                prepare_context(self.store, self.payload())
+                with mock.patch("memory_manager.autoload.__version__", "next-version"):
+                    data = self.data(prepare_context(self.store, self.payload(event)))
+                    self.assertEqual(data["plugin_version"], "next-version")
+                    self.assertEqual(data["revision"], 1)
 
     def test_disabling_all_globals_injects_empty_replacement_and_revocations(self):
         entry = self.create()
@@ -224,7 +304,7 @@ class AutoloadTests(unittest.TestCase):
             self.assertEqual(portable["extensions"]["com.openai"]["hooks"], "./hooks/hooks.json")
             self.assertEqual(portable["extensions"]["com.openai"]["interface"], compatibility["interface"])
         config = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))
-        self.assertEqual(set(config["hooks"]), {"SessionStart", "UserPromptSubmit"})
+        self.assertEqual(set(config["hooks"]), {"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse"})
         for group in config["hooks"].values():
             command = group[0]["hooks"][0]
             self.assertEqual(command["type"], "command")
